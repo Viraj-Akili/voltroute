@@ -1,10 +1,17 @@
 import { RouteRequest, RouteResponse, VehiclePreset, StationResponse } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const getApiBaseUrl = (): string => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, "");
+  }
+  return "http://localhost:8000";
+};
 
 export async function checkHealth(): Promise<{ status: string; charging_stations_loaded?: number }> {
   try {
-    const res = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+    const API_URL = getApiBaseUrl();
+    const res = await fetch(`${API_URL}/health`, { cache: "no-store" });
     if (!res.ok) throw new Error(`Health check failed: ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -15,7 +22,8 @@ export async function checkHealth(): Promise<{ status: string; charging_stations
 
 export async function getVehiclePresets(): Promise<VehiclePreset[]> {
   try {
-    const res = await fetch(`${API_BASE}/api/vehicles/presets`, { cache: "force-cache" });
+    const API_URL = getApiBaseUrl();
+    const res = await fetch(`${API_URL}/api/vehicles/presets`, { cache: "force-cache" });
     if (!res.ok) throw new Error(`Presets failed: ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -98,7 +106,8 @@ export async function getVehiclePresets(): Promise<VehiclePreset[]> {
 }
 
 export async function planRoute(request: RouteRequest): Promise<RouteResponse> {
-  const res = await fetch(`${API_BASE}/api/route`, {
+  const API_URL = getApiBaseUrl();
+  const res = await fetch(`${API_URL}/route`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -123,7 +132,8 @@ export async function planRoute(request: RouteRequest): Promise<RouteResponse> {
 export async function getStations(params: number | { limit?: number } = 250): Promise<StationResponse[]> {
   const limitVal = typeof params === "number" ? params : params?.limit || 250;
   try {
-    const res = await fetch(`${API_BASE}/api/stations?limit=${limitVal}`);
+    const API_URL = getApiBaseUrl();
+    const res = await fetch(`${API_URL}/api/stations?limit=${limitVal}`);
     if (!res.ok) throw new Error(`Stations fetch failed: ${res.status}`);
     return await res.json();
   } catch (err) {
