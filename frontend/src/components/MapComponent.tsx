@@ -1,483 +1,452 @@
-"use client";
+'use client';
 
-import React, { useEffect, useRef, useState } from "react";
-import {
-  RouteResponse,
-  ResolvedLocation,
-  ChargingStop,
-  StationResponse,
-} from "../lib/types";
-import {
-  Maximize2,
-  Layers,
-  Zap,
-  MapPin,
-  Flag,
-  Navigation,
-  Compass,
-} from "lucide-react";
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { Map, useMap } from '@vis.gl/react-google-maps';
+import { RouteResponse, ChargingStation, RouteStop } from '../lib/types';
+
+// Subtle, clean dark mode styles for Google Maps
+const darkMapStyles: google.maps.MapTypeStyle[] = [
+  { elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0f172a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#94a3b8' }] },
+  {
+    featureType: 'administrative.locality',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#cbd5e1' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#64748b' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#14532d' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#334155' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#1e293b' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#94a3b8' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#475569' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#0f172a' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#0f172a' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#475569' }],
+  },
+];
 
 interface MapComponentProps {
+  theme: 'light' | 'dark';
   routeData: RouteResponse | null;
-  allCorridorStations?: StationResponse[];
-  selectedStopIndex?: number | null;
-  onSelectStop?: (stopIndex: number) => void;
+  allStations: ChargingStation[];
+  showAllStations: boolean;
+  selectedStation: ChargingStation | null;
+  onSelectStation: (station: ChargingStation | null) => void;
+  highlightedStopIndex: number | null;
+  apiKeyMissing?: boolean;
 }
 
-export const MapComponent: React.FC<MapComponentProps> = ({
+export default function MapComponent({
+  theme,
   routeData,
-  allCorridorStations = [],
-  selectedStopIndex,
-  onSelectStop,
-}) => {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const layersGroupRef = useRef<any>(null);
-  const [mapStyle, setMapStyle] = useState<"voyager" | "dark" | "osm">("voyager");
-  const [tileLayerRef, setTileLayerRef] = useState<any>(null);
+  allStations,
+  showAllStations,
+  selectedStation,
+  onSelectStation,
+  highlightedStopIndex,
+  apiKeyMissing,
+}: MapComponentProps) {
+  const map = useMap();
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const markersRef = useRef<{ type: string; marker: google.maps.Marker }[]>([]);
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markerPositionsRef = useRef<Record<string, google.maps.LatLngLiteral[]>>({
+    charging: [],
+    recommended: [],
+    start: [],
+    destination: [],
+  });
 
-  // Initialize Map
+  // Toggles for legend categories
+  const [visibleLayers, setVisibleLayers] = useState({
+    charging: true,
+    recommended: true,
+    start: true,
+    destination: true,
+  });
+
+  // Default Center: Vellore, Tamil Nadu, India
+  const defaultCenter = useMemo(() => ({ lat: 12.9165, lng: 79.1325 }), []);
+
+  // Update theme styles on map
   useEffect(() => {
-    if (!mapContainerRef.current) return;
-    if (mapInstanceRef.current) return; // already initialized
-
-    // Dynamic Leaflet import
-    import("leaflet").then((L) => {
-      // Fix default leaflet icons
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
-      L.Icon.Default.mergeOptions({
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-      });
-
-      // Default center: United States
-      const map = L.map(mapContainerRef.current!, {
-        center: [37.0902, -95.7129],
-        zoom: 4,
-        zoomControl: false,
-      });
-
-      // Add custom zoom control to top-right
-      L.control.zoom({ position: "topright" }).addTo(map);
-
-      // Tile Layer URL
-      const tileUrl =
-        mapStyle === "dark"
-          ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          : mapStyle === "voyager"
-          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-
-      const tiles = L.tileLayer(tileUrl, {
-        attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>',
-        maxZoom: 19,
-      }).addTo(map);
-
-      setTileLayerRef(tiles);
-
-      // Feature group for markers & polylines
-      const group = L.featureGroup().addTo(map);
-      layersGroupRef.current = group;
-      mapInstanceRef.current = map;
+    if (!map) return;
+    map.setOptions({
+      styles: theme === 'dark' ? darkMapStyles : null,
     });
+  }, [map, theme]);
 
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-    };
-  }, []);
-
-  // Update Tile Layer when style changes
+  // Render Polylines and Markers
   useEffect(() => {
-    if (!mapInstanceRef.current) return;
-    import("leaflet").then((L) => {
-      const map = mapInstanceRef.current;
-      map.eachLayer((layer: any) => {
-        if (layer instanceof L.TileLayer) {
-          map.removeLayer(layer);
-        }
+    if (!map || !window.google?.maps) return;
+
+    // 1. Clear existing markers
+    markersRef.current.forEach((item) => item.marker.setMap(null));
+    markersRef.current = [];
+
+    // 2. Clear existing polyline
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    // 3. Clear InfoWindow
+    if (infoWindowRef.current) {
+      infoWindowRef.current.close();
+    }
+    infoWindowRef.current = new window.google.maps.InfoWindow();
+
+    const bounds = new window.google.maps.LatLngBounds();
+    let hasPointsToFit = false;
+    markerPositionsRef.current = { charging: [], recommended: [], start: [], destination: [] };
+
+    // A. Draw Route Polyline if available
+    const coords = routeData?.route_geometry || (routeData as any)?.geometry?.coordinates;
+    if (coords && coords.length > 0) {
+      const path: google.maps.LatLngLiteral[] = coords.map((coord: any) => ({
+        lat: Number(coord[0]),
+        lng: Number(coord[1]),
+      }));
+
+      polylineRef.current = new window.google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#059669', // Restrained emerald green
+        strokeOpacity: 0.95,
+        strokeWeight: 5,
+        map,
       });
 
-      const tileUrl =
-        mapStyle === "dark"
-          ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          : mapStyle === "voyager"
-          ? "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+      path.forEach((pt: google.maps.LatLngLiteral) => {
+        bounds.extend(pt);
+        hasPointsToFit = true;
+      });
+    }
 
-      L.tileLayer(tileUrl, {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19,
-      }).addTo(map);
-    });
-  }, [mapStyle]);
+    // B. Draw Start Marker (🔵 Blue)
+    if (routeData?.origin && visibleLayers.start) {
+      const originPos = { lat: routeData.origin.latitude, lng: routeData.origin.longitude };
+      markerPositionsRef.current.start.push(originPos);
+      bounds.extend(originPos);
+      hasPointsToFit = true;
 
-  // Update Route Polyline & Markers when routeData changes
-  useEffect(() => {
-    if (!mapInstanceRef.current || !layersGroupRef.current) return;
-
-    import("leaflet").then((L) => {
-      const map = mapInstanceRef.current;
-      const group = layersGroupRef.current;
-      group.clearLayers();
-
-      if (!routeData) {
-        // Default overview if no route yet
-        map.setView([37.0902, -95.7129], 4);
-        return;
-      }
-
-      const { origin, destination, route_geometry, stops, candidate_stations } = routeData;
-
-      // 1. Draw Other Candidate Stations along the corridor (dimmed dots)
-      if (candidate_stations && candidate_stations.length > 0) {
-        const stopStationIds = new Set(stops.map((st) => st.station.id));
-
-        candidate_stations.forEach((cand) => {
-          if (stopStationIds.has(cand.id)) return; // Skip planned stops (handled separately)
-
-          const candIcon = L.divIcon({
-            className: "custom-candidate-icon",
-            html: `
-              <div style="
-                width: 14px;
-                height: 14px;
-                border-radius: 50%;
-                background: #1e293b;
-                border: 2px solid #64748b;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-                cursor: pointer;
-              ">
-                <div style="width: 4px; height: 4px; border-radius: 50%; background: #94a3b8;"></div>
-              </div>
-            `,
-            iconSize: [14, 14],
-            iconAnchor: [7, 7],
-          });
-
-          const marker = L.marker([cand.latitude, cand.longitude], {
-            icon: candIcon,
-            title: cand.name,
-          });
-
-          marker.bindPopup(`
-            <div style="font-family: sans-serif; min-width: 180px; padding: 2px;">
-              <span style="font-size: 10px; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Available Fast Charger</span>
-              <h4 style="font-size: 13px; font-weight: 700; color: #ffffff; margin: 2px 0;">${cand.name}</h4>
-              <p style="font-size: 11px; color: #94a3b8; margin: 0;">${cand.operator} • <strong style="color: #38bdf8;">${cand.power_kw} kW</strong></p>
-              <p style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">Detour: <strong>${cand.detour_km ?? 0} km</strong> from route</p>
-            </div>
-          `);
-
-          group.addLayer(marker);
-        });
-      }
-
-      // 2. Draw Route Polyline
-      if (route_geometry && route_geometry.length > 1) {
-        // Outer Glow line
-        const glowLine = L.polyline(route_geometry, {
-          color: "#06b6d4",
-          weight: 7,
-          opacity: 0.35,
-          lineCap: "round",
-          lineJoin: "round",
-        });
-        group.addLayer(glowLine);
-
-        // Core line
-        const mainLine = L.polyline(route_geometry, {
-          color: "#10b981",
-          weight: 4,
-          opacity: 0.95,
-          lineCap: "round",
-          lineJoin: "round",
-        });
-        group.addLayer(mainLine);
-      }
-
-      // 3. Origin Marker
-      const originIcon = L.divIcon({
-        className: "custom-origin-icon",
-        html: `
-          <div style="
-            position: relative;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <div style="
-              position: absolute;
-              width: 100%;
-              height: 100%;
-              border-radius: 50%;
-              background: rgba(16, 185, 129, 0.3);
-              animation: pulse 2s infinite;
-            "></div>
-            <div style="
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: #0f172a;
-              border: 3px solid #10b981;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              box-shadow: 0 0 12px rgba(16, 185, 129, 0.6);
-            ">
-              <div style="width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></div>
-            </div>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+      const originMarker = new window.google.maps.Marker({
+        position: originPos,
+        map,
+        title: `Start: ${routeData.origin.name}`,
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: '#2563eb', // Blue
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2.5,
+        },
       });
 
-      const originMarker = L.marker([origin.latitude, origin.longitude], {
-        icon: originIcon,
-        zIndexOffset: 1000,
-      }).bindPopup(`
-        <div style="font-family: sans-serif; min-width: 160px;">
-          <span style="font-size: 10px; color: #10b981; font-weight: 800; text-transform: uppercase;">Origin</span>
-          <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin: 2px 0;">${origin.name}</h4>
-          <p style="font-size: 11px; color: #94a3b8; margin: 0;">Start Battery: <strong>${routeData.summary.initial_battery_pct}%</strong></p>
-        </div>
-      `);
-      group.addLayer(originMarker);
-
-      // 4. Destination Marker
-      const destIcon = L.divIcon({
-        className: "custom-dest-icon",
-        html: `
-          <div style="
-            position: relative;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          ">
-            <div style="
-              width: 24px;
-              height: 24px;
-              border-radius: 50%;
-              background: #0f172a;
-              border: 3px solid #f43f5e;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              box-shadow: 0 0 12px rgba(244, 63, 94, 0.6);
-            ">
-              <div style="width: 8px; height: 8px; border-radius: 50%; background: #f43f5e;"></div>
-            </div>
-          </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-
-      const destMarker = L.marker([destination.latitude, destination.longitude], {
-        icon: destIcon,
-        zIndexOffset: 1000,
-      }).bindPopup(`
-        <div style="font-family: sans-serif; min-width: 160px;">
-          <span style="font-size: 10px; color: #f43f5e; font-weight: 800; text-transform: uppercase;">Final Destination</span>
-          <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin: 2px 0;">${destination.name}</h4>
-          <p style="font-size: 11px; color: #94a3b8; margin: 0;">Arrival Battery: <strong style="color: #10b981;">${routeData.summary.final_battery_pct}%</strong></p>
-        </div>
-      `);
-      group.addLayer(destMarker);
-
-      // 5. Charging Stop Markers
-      stops.forEach((stop) => {
-        const isSelected = selectedStopIndex === stop.stop_index;
-        const stopIcon = L.divIcon({
-          className: "custom-stop-icon",
-          html: `
-            <div style="
-              position: relative;
-              width: 34px;
-              height: 34px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
-            ">
-              <div style="
-                position: absolute;
-                inset: 0;
-                border-radius: 50%;
-                background: ${isSelected ? "rgba(6, 182, 212, 0.5)" : "rgba(16, 185, 129, 0.35)"};
-                animation: pulse 1.5s infinite;
-              "></div>
-              <div style="
-                width: 28px;
-                height: 28px;
-                border-radius: 50%;
-                background: #0f172a;
-                border: 2px solid ${isSelected ? "#38bdf8" : "#00f59b"};
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                color: #ffffff;
-                font-size: 11px;
-                font-weight: 800;
-                box-shadow: 0 0 14px ${isSelected ? "rgba(56, 189, 248, 0.8)" : "rgba(0, 245, 155, 0.6)"};
-              ">
-                ⚡${stop.stop_index}
-              </div>
-            </div>
-          `,
-          iconSize: [34, 34],
-          iconAnchor: [17, 17],
-        });
-
-        const stopMarker = L.marker(
-          [stop.station.latitude, stop.station.longitude],
-          {
-            icon: stopIcon,
-            zIndexOffset: 1200,
-          }
-        );
-
-        stopMarker.bindPopup(`
-          <div style="font-family: sans-serif; min-width: 220px; padding: 2px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-              <span style="font-size: 10px; background: rgba(6, 182, 212, 0.2); color: #38bdf8; font-weight: 800; padding: 2px 6px; border-radius: 4px;">Stop #${stop.stop_index}</span>
-              <span style="font-size: 10px; background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-weight: 800; padding: 2px 6px; border-radius: 4px;">${stop.station.power_kw} kW</span>
-            </div>
-            <h4 style="font-size: 13px; font-weight: 700; color: #ffffff; margin: 2px 0;">${stop.station.name}</h4>
-            <p style="font-size: 11px; color: #94a3b8; margin: 0 0 6px 0;">${stop.station.operator} • ${stop.station.city}, ${stop.station.state}</p>
-            
-            <div style="background: rgba(15, 23, 42, 0.8); border-radius: 6px; padding: 6px; font-size: 11px; margin-bottom: 6px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #94a3b8;">Charge Duration:</span>
-                <strong style="color: #00f59b;">${stop.charge_duration_min} min</strong>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-                <span style="color: #94a3b8;">Battery Level:</span>
-                <strong><span style="color: #fbbf24;">${stop.arrival_soc_pct}%</span> → <span style="color: #00f59b;">${stop.departure_soc_pct}%</span></strong>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: #94a3b8;">Energy & Cost:</span>
-                <strong>+${stop.energy_added_kwh} kWh ($${stop.estimated_cost_usd.toFixed(2)})</strong>
-              </div>
-            </div>
-
-            <p style="font-size: 10px; color: #64748b; margin: 0;">Plugs: ${stop.station.connector_types.join(", ")}</p>
+      originMarker.addListener('click', () => {
+        infoWindowRef.current?.setContent(`
+          <div style="font-family: inherit; padding: 6px 8px; color: #0f172a; max-width: 220px;">
+            <div style="font-size: 11px; font-weight: 700; color: #2563eb; text-transform: uppercase;">🔵 Start</div>
+            <div style="font-size: 13px; font-weight: 700; margin-top: 2px;">${routeData.origin.name}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Departure point with initial battery.</div>
           </div>
         `);
+        infoWindowRef.current?.open(map, originMarker);
+      });
+      markersRef.current.push({ type: 'start', marker: originMarker });
+    }
 
-        stopMarker.on("click", () => {
-          if (onSelectStop) onSelectStop(stop.stop_index);
-        });
+    // C. Draw Destination Marker (🔴 Red)
+    if (routeData?.destination && visibleLayers.destination) {
+      const destPos = { lat: routeData.destination.latitude, lng: routeData.destination.longitude };
+      markerPositionsRef.current.destination.push(destPos);
+      bounds.extend(destPos);
+      hasPointsToFit = true;
 
-        group.addLayer(stopMarker);
+      const destMarker = new window.google.maps.Marker({
+        position: destPos,
+        map,
+        title: `Destination: ${routeData.destination.name}`,
+        icon: {
+          path: window.google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: '#dc2626', // Red
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2.5,
+        },
       });
 
-      // Fit map bounds to encompass full route with padding
-      if (group.getLayers().length > 0) {
-        map.fitBounds(group.getBounds(), {
-          padding: [50, 50],
-          maxZoom: 14,
+      destMarker.addListener('click', () => {
+        infoWindowRef.current?.setContent(`
+          <div style="font-family: inherit; padding: 6px 8px; color: #0f172a; max-width: 220px;">
+            <div style="font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase;">🔴 Destination</div>
+            <div style="font-size: 13px; font-weight: 700; margin-top: 2px;">${routeData.destination.name}</div>
+            <div style="font-size: 11px; color: #64748b; margin-top: 4px;">Estimated arrival with ~${routeData.summary.final_battery_pct.toFixed(0)}% battery.</div>
+          </div>
+        `);
+        infoWindowRef.current?.open(map, destMarker);
+      });
+      markersRef.current.push({ type: 'destination', marker: destMarker });
+    }
+
+    // D. Draw Recommended Stops (🟢 Green Markers)
+    if (routeData?.stops && routeData.stops.length > 0 && visibleLayers.recommended) {
+      routeData.stops.forEach((stop: RouteStop, idx: number) => {
+        const stopPos = { lat: stop.station.latitude, lng: stop.station.longitude };
+        markerPositionsRef.current.recommended.push(stopPos);
+        bounds.extend(stopPos);
+        hasPointsToFit = true;
+
+        const isHighlighted = highlightedStopIndex === idx;
+
+        const stopMarker = new window.google.maps.Marker({
+          position: stopPos,
+          map,
+          title: `Recommended stop: ${stop.station.name}`,
+          zIndex: 100,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: isHighlighted ? 12 : 10,
+            fillColor: '#059669', // Emerald green
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: isHighlighted ? 3 : 2,
+          },
         });
+
+        stopMarker.addListener('click', () => {
+          onSelectStation(stop.station);
+          infoWindowRef.current?.setContent(`
+            <div style="font-family: inherit; padding: 8px 10px; color: #0f172a; max-width: 250px;">
+              <div style="font-size: 11px; font-weight: 700; color: #059669; text-transform: uppercase; margin-bottom: 2px;">
+                🟢 Recommended stop
+              </div>
+              <div style="font-size: 13px; font-weight: 700; color: #0f172a;">${stop.station.name}</div>
+              
+              <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 11px; line-height: 1.6; color: #334155;">
+                <div>Arrival battery: <strong>${stop.arrival_soc_pct.toFixed(0)}%</strong></div>
+                <div>Charge target: <strong>${stop.departure_soc_pct.toFixed(0)}%</strong></div>
+                <div>Estimated charging time: <strong>${stop.charge_duration_min.toFixed(0)} min</strong></div>
+                <div>Estimated cost: <strong>₹${Math.round(stop.estimated_cost_usd)}</strong></div>
+              </div>
+
+              <div style="margin-top: 10px;">
+                <a 
+                  href="https://www.google.com/maps/dir/?api=1&destination=${stop.station.latitude},${stop.station.longitude}" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style="display: block; text-align: center; background: #059669; color: #ffffff; font-size: 12px; font-weight: 700; padding: 7px 10px; border-radius: 8px; text-decoration: none;"
+                >
+                  Navigate
+                </a>
+              </div>
+            </div>
+          `);
+          infoWindowRef.current?.open(map, stopMarker);
+        });
+
+        markersRef.current.push({ type: 'recommended', marker: stopMarker });
+      });
+    }
+
+    // E. Draw General Charging Points (🟡 Yellow Markers)
+    if (showAllStations && allStations.length > 0 && visibleLayers.charging) {
+      const stopIds = new Set(routeData?.stops?.map((s) => s.station.id) || []);
+
+      // Filter to stations relevant to the current route corridor (max 25 stations)
+      let candidateStations = allStations.filter((s) => !stopIds.has(s.id));
+
+      if (routeData?.origin && routeData?.destination) {
+        const originLat = routeData.origin.latitude;
+        const originLng = routeData.origin.longitude;
+        const destLat = routeData.destination.latitude;
+        const destLng = routeData.destination.longitude;
+
+        const minLat = Math.min(originLat, destLat) - 0.5;
+        const maxLat = Math.max(originLat, destLat) + 0.5;
+        const minLng = Math.min(originLng, destLng) - 0.5;
+        const maxLng = Math.max(originLng, destLng) + 0.5;
+
+        candidateStations = candidateStations.filter(
+          (s) =>
+            s.latitude >= minLat &&
+            s.latitude <= maxLat &&
+            s.longitude >= minLng &&
+            s.longitude <= maxLng
+        );
       }
-    });
-  }, [routeData, selectedStopIndex]);
 
-  // Recenter map button handler
-  const handleRecenter = () => {
-    if (!mapInstanceRef.current || !layersGroupRef.current) return;
-    const group = layersGroupRef.current;
-    if (group.getLayers().length > 0) {
-      mapInstanceRef.current.fitBounds(group.getBounds(), {
-        padding: [50, 50],
-        maxZoom: 14,
+      // Limit to max 25 stations to avoid cluttering the map
+      candidateStations.slice(0, 25).forEach((station) => {
+        const stationPos = { lat: station.latitude, lng: station.longitude };
+        markerPositionsRef.current.charging.push(stationPos);
+
+        const stationMarker = new window.google.maps.Marker({
+          position: stationPos,
+          map,
+          title: `Charging point: ${station.name}`,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: '#d97706', // Amber / Yellow
+            fillOpacity: 0.95,
+            strokeColor: '#ffffff',
+            strokeWeight: 1.5,
+          },
+        });
+
+        stationMarker.addListener('click', () => {
+          onSelectStation(station);
+          infoWindowRef.current?.setContent(`
+            <div style="font-family: inherit; padding: 8px 10px; color: #0f172a; max-width: 240px;">
+              <div style="font-size: 10px; font-weight: 700; color: #d97706; text-transform: uppercase;">
+                🟡 Charging point
+              </div>
+              <div style="font-size: 13px; font-weight: 700; margin-top: 2px;">${station.name}</div>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">${station.operator}</div>
+              
+              <div style="margin-top: 6px; font-size: 11px; color: #334155; line-height: 1.5;">
+                ${station.power_kw ? `<div>Power: <strong>${station.power_kw} kW</strong></div>` : ''}
+                ${station.city ? `<div>Location: <strong>${station.city}</strong></div>` : ''}
+              </div>
+
+              <div style="margin-top: 10px;">
+                <a 
+                  href="https://www.google.com/maps/dir/?api=1&destination=${station.latitude},${station.longitude}" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  style="display: block; text-align: center; background: #d97706; color: #ffffff; font-size: 11px; font-weight: 700; padding: 6px 8px; border-radius: 6px; text-decoration: none;"
+                >
+                  Open in Google Maps
+                </a>
+              </div>
+            </div>
+          `);
+          infoWindowRef.current?.open(map, stationMarker);
+        });
+
+        markersRef.current.push({ type: 'charging', marker: stationMarker });
       });
+    }
+
+    // Auto fit bounds to visible points
+    if (hasPointsToFit) {
+      map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
+    }
+  }, [map, routeData, allStations, showAllStations, highlightedStopIndex, visibleLayers, onSelectStation]);
+
+  // Interactive Legend click: focus or toggle group
+  const handleLegendClick = (group: 'charging' | 'recommended' | 'start' | 'destination') => {
+    if (!map) return;
+    const points = markerPositionsRef.current[group] || [];
+    if (points.length > 0) {
+      const bounds = new window.google.maps.LatLngBounds();
+      points.forEach((point) => bounds.extend(point));
+      map.fitBounds(bounds, { top: 80, right: 80, bottom: 80, left: 80 });
     }
   };
 
+  const toggleLayer = (group: 'charging' | 'recommended' | 'start' | 'destination') => {
+    setVisibleLayers((prev) => ({ ...prev, [group]: !prev[group] }));
+  };
+
   return (
-    <div className="relative w-full h-full min-h-[420px] lg:min-h-[580px] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-card-glass">
-      {/* Map Container */}
-      <div ref={mapContainerRef} className="w-full h-full" />
+    <div className="relative w-full h-full">
+      <Map
+        defaultCenter={defaultCenter}
+        defaultZoom={8}
+        mapId="DEMO_MAP_ID"
+        gestureHandling="greedy"
+        disableDefaultUI={false}
+        className="w-full h-full"
+      />
 
-      {/* Floating Map Controls */}
-      <div className="absolute top-4 left-4 z-[400] flex items-center space-x-2">
-        {/* Style Selector */}
-        <div className="flex items-center bg-space-900/90 backdrop-blur-md rounded-xl p-1 border border-white/10 shadow-lg text-xs">
-          <button
-            onClick={() => setMapStyle("voyager")}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-              mapStyle === "voyager"
-                ? "bg-volt-500 text-space-900 shadow-volt-glow font-bold"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            Light
-          </button>
-          <button
-            onClick={() => setMapStyle("dark")}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-              mapStyle === "dark"
-                ? "bg-volt-500 text-space-900 shadow-volt-glow font-bold"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            Dark
-          </button>
-          <button
-            onClick={() => setMapStyle("osm")}
-            className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-              mapStyle === "osm"
-                ? "bg-volt-500 text-space-900 shadow-volt-glow font-bold"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            OSM
-          </button>
+      {apiKeyMissing && (
+        <div className="absolute bottom-4 left-4 z-10 max-w-xs rounded-xl border border-amber-300 bg-amber-50/95 px-3 py-2 text-xs text-amber-900 shadow-md">
+          Add a Google Maps key with Maps JavaScript and Places enabled to activate global place search.
         </div>
+      )}
 
-        {/* Recenter Button */}
+      {/* Interactive Map Legend */}
+      <div className="absolute top-3 right-3 z-10 flex flex-wrap justify-end gap-1.5 max-w-[calc(100%-2rem)]">
         <button
-          onClick={handleRecenter}
-          title="Fit Route to View"
-          className="p-2 rounded-xl bg-space-900/90 backdrop-blur-md text-slate-300 hover:text-volt-400 border border-white/10 shadow-lg hover:border-volt-500/30 transition-all hover:scale-105 active:scale-95"
+          type="button"
+          onClick={() => handleLegendClick('charging')}
+          title="Click to focus corridor charging points"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
         >
-          <Maximize2 className="w-4 h-4" />
+          <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+          <span>Charging points</span>
         </button>
-      </div>
 
-      {/* Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-[400] hidden sm:flex items-center space-x-3 bg-space-900/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-white/10 text-xs shadow-lg">
-        <div className="flex items-center space-x-1.5">
-          <span className="w-3 h-3 rounded-full bg-volt-400 border border-space-900 inline-block shadow-volt-glow"></span>
-          <span className="text-slate-300 font-medium">Start</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <span className="w-3.5 h-3.5 rounded-full bg-space-850 border border-volt-400 flex items-center justify-center text-[9px] font-black text-volt-300">
-            ⚡
-          </span>
-          <span className="text-slate-300 font-medium">Stop</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <span className="w-3 h-3 rounded-full bg-rose-400 border border-space-900 inline-block"></span>
-          <span className="text-slate-300 font-medium">Destination</span>
-        </div>
-        <div className="flex items-center space-x-1.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-slate-600 border border-slate-400 inline-block"></span>
-          <span className="text-slate-400 text-[11px]">Corridor Charger</span>
-        </div>
+        <button
+          type="button"
+          onClick={() => handleLegendClick('recommended')}
+          title="Click to focus recommended stops"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block" />
+          <span>Recommended stops</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleLegendClick('start')}
+          title="Click to focus start point"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+          <span>Start</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleLegendClick('destination')}
+          title="Click to focus destination"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white/95 dark:bg-slate-900/95 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+          <span>Destination</span>
+        </button>
       </div>
     </div>
   );
-};
+}

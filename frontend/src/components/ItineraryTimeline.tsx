@@ -1,210 +1,146 @@
-"use client";
+'use client';
 
-import React from "react";
-import {
-  MapPin,
-  Flag,
-  BatteryCharging,
-  Zap,
-  Coffee,
-  Utensils,
-  Wifi,
-  ShoppingBag,
-  DollarSign,
-  Clock,
-  ArrowRight,
-  ShieldCheck,
-} from "lucide-react";
-import { RouteLeg, ChargingStop, ResolvedLocation } from "../lib/types";
+import React from 'react';
+import { RouteLeg, RouteStop, RouteLocation } from '../lib/types';
 
 interface ItineraryTimelineProps {
-  origin: ResolvedLocation;
-  destination: ResolvedLocation;
   legs: RouteLeg[];
-  stops: ChargingStop[];
-  initialSoc: number;
+  stops: RouteStop[];
+  origin: RouteLocation;
+  destination: RouteLocation;
+  onHoverStop?: (index: number | null) => void;
+  onSelectStop?: (stop: RouteStop) => void;
 }
 
-export const ItineraryTimeline: React.FC<ItineraryTimelineProps> = ({
-  origin,
-  destination,
+export default function ItineraryTimeline({
   legs,
   stops,
-  initialSoc,
-}) => {
-  // Render amenity icon based on string
-  const renderAmenityIcon = (amenity: string) => {
-    const lower = amenity.toLowerCase();
-    if (lower.includes("coffee")) return <span title="Coffee"><Coffee className="w-3.5 h-3.5 text-amber-400" /></span>;
-    if (lower.includes("dining") || lower.includes("food") || lower.includes("restaurant"))
-      return <span title="Dining"><Utensils className="w-3.5 h-3.5 text-orange-400" /></span>;
-    if (lower.includes("wifi")) return <span title="WiFi"><Wifi className="w-3.5 h-3.5 text-sky-400" /></span>;
-    if (lower.includes("shopping") || lower.includes("outlets") || lower.includes("mall"))
-      return <span title="Shopping"><ShoppingBag className="w-3.5 h-3.5 text-purple-400" /></span>;
-    return <span title={amenity}><ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /></span>;
-  };
-
-  const formatMinutes = (mins: number) => {
-    const h = Math.floor(mins / 60);
-    const m = Math.round(mins % 60);
-    if (h === 0) return `${m}m`;
-    return `${h}h ${m > 0 ? `${m}m` : ""}`;
+  origin,
+  destination,
+  onHoverStop,
+  onSelectStop,
+}: ItineraryTimelineProps) {
+  const formatTime = (minutes: number) => {
+    const hrs = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+    if (hrs === 0) return `${mins} min`;
+    return `${hrs} hr ${mins > 0 ? `${mins} min` : ''}`;
   };
 
   return (
-    <div className="glass-panel rounded-2xl p-5 sm:p-6 shadow-card-glass border border-white/10 space-y-4">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h4 className="text-base font-bold text-white tracking-wide flex items-center space-x-2">
-          <Clock className="w-4 h-4 text-volt-400" />
-          <span>Turn-by-Turn EV Itinerary</span>
-        </h4>
-        <span className="text-xs text-slate-400 font-medium">
-          {stops.length === 0 ? "Non-Stop Direct Leg" : `${stops.length} Optimized Stop${stops.length > 1 ? "s" : ""}`}
+    <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4 transition-colors">
+      <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+          Trip Itinerary
+        </h3>
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+          {stops.length === 0
+            ? 'Direct trip (0 stops)'
+            : `${stops.length} stop${stops.length > 1 ? 's' : ''}`}
         </span>
       </div>
 
-      <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-gradient-to-b before:from-volt-400 before:via-electric-cyan before:to-rose-400">
-        {/* Origin Step */}
+      <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
+        {/* Origin / Start */}
         <div className="relative">
-          <div className="absolute -left-6 top-1 w-5 h-5 rounded-full bg-space-900 border-2 border-volt-400 flex items-center justify-center shadow-volt-glow">
-            <div className="w-2 h-2 rounded-full bg-volt-400 animate-pulse"></div>
-          </div>
-          <div className="bg-space-850/60 rounded-xl p-3.5 border border-white/5 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-volt-400">
-                Departure
-              </span>
-              <span className="text-xs font-bold text-white bg-space-900 px-2 py-0.5 rounded border border-white/10">
-                {initialSoc}% Battery
-              </span>
-            </div>
-            <p className="text-sm font-bold text-white">{origin.name}</p>
-            <p className="text-xs text-slate-400 truncate">{origin.formatted_address}</p>
+          <span className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-blue-500 border-2 border-white dark:border-slate-900 flex items-center justify-center text-white text-[9px] font-bold shadow-sm">
+            ●
+          </span>
+          <div>
+            <p className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">
+              {origin.name}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Start location</p>
           </div>
         </div>
 
-        {/* Legs and Stops */}
+        {/* Driving Legs & Charging Stops */}
         {legs.map((leg, idx) => {
-          const correspondingStop = stops[idx]; // stop after this leg (if any)
-
+          const matchingStop = stops[idx];
           return (
-            <React.Fragment key={leg.leg_index}>
-              {/* Driving Leg info */}
-              <div className="relative my-2">
-                <div className="flex items-center justify-between text-xs text-slate-400 bg-space-900/40 rounded-lg px-3 py-1.5 border border-dashed border-white/10">
-                  <span className="flex items-center space-x-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-electric-400"></span>
-                    <span>Drive {leg.distance_km} km ({formatMinutes(leg.duration_min)})</span>
-                  </span>
-                  <span className="text-slate-500 font-medium">
-                    Uses {leg.energy_used_kwh} kWh ({leg.start_soc_pct}% → {leg.end_soc_pct}%)
-                  </span>
-                </div>
+            <div key={idx} className="space-y-3">
+              {/* Driving distance / time */}
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 font-medium py-0.5">
+                <span>🚗 Drive {leg.distance_km.toFixed(0)} km</span>
+                <span>•</span>
+                <span>{formatTime(leg.duration_min)}</span>
               </div>
 
-              {/* Charging Stop Card (if not final destination) */}
-              {correspondingStop && (
-                <div className="relative">
-                  <div className="absolute -left-6 top-1 w-5 h-5 rounded-full bg-space-900 border-2 border-electric-cyan flex items-center justify-center shadow-cyan-glow">
-                    <Zap className="w-3 h-3 text-electric-cyan" />
+              {/* Recommended Stop Card */}
+              {matchingStop && (
+                <div
+                  onMouseEnter={() => onHoverStop && onHoverStop(idx)}
+                  onMouseLeave={() => onHoverStop && onHoverStop(null)}
+                  onClick={() => onSelectStop && onSelectStop(matchingStop)}
+                  className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 hover:border-emerald-400 transition-colors cursor-pointer shadow-sm group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block"></span>
+                        <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase tracking-wider">
+                          Recommended stop {idx + 1}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 mt-0.5 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                        {matchingStop.station.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {matchingStop.station.operator}
+                        {matchingStop.station.city ? ` • ${matchingStop.station.city}` : ''}
+                      </p>
+                    </div>
+
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${matchingStop.station.latitude},${matchingStop.station.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1 transition-colors flex-shrink-0"
+                    >
+                      Navigate
+                    </a>
                   </div>
 
-                  <div className="bg-gradient-to-br from-space-800 to-space-850 rounded-xl p-4 border border-electric-cyan/25 shadow-card-glass space-y-2.5">
-                    {/* Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="px-2 py-0.5 rounded bg-electric-cyan/15 text-electric-cyan text-[11px] font-extrabold uppercase tracking-wide border border-electric-cyan/30">
-                          Stop #{correspondingStop.stop_index}
-                        </span>
-                        <span className="text-xs text-slate-400 font-medium">
-                          {correspondingStop.station.operator}
-                        </span>
-                      </div>
-                      <span className="text-xs font-extrabold text-volt-300 bg-volt-500/10 px-2.5 py-1 rounded-full border border-volt-500/20 flex items-center space-x-1">
-                        <BatteryCharging className="w-3.5 h-3.5" />
-                        <span>Charge {correspondingStop.charge_duration_min} min</span>
+                  <div className="grid grid-cols-3 gap-2 mt-3 pt-2.5 border-t border-emerald-200/60 dark:border-emerald-800/40 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block">Arrival SOC</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {matchingStop.arrival_soc_pct.toFixed(0)}%
                       </span>
                     </div>
-
-                    {/* Station Name & Power */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h5 className="text-sm font-bold text-white">
-                          {correspondingStop.station.name}
-                        </h5>
-                        <p className="text-xs text-slate-400">
-                          {correspondingStop.station.city}, {correspondingStop.station.state}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="inline-block px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-black text-xs border border-amber-500/30">
-                          {correspondingStop.station.power_kw} kW
-                        </span>
-                      </div>
+                    <div>
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block">Charge to</span>
+                      <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                        {matchingStop.departure_soc_pct.toFixed(0)}% ({matchingStop.charge_duration_min.toFixed(0)} min)
+                      </span>
                     </div>
-
-                    {/* Battery SOC Jump and Energy Details */}
-                    <div className="grid grid-cols-2 gap-2 bg-space-900/80 rounded-lg p-2.5 border border-white/5 text-xs">
-                      <div>
-                        <span className="text-slate-500 text-[10px] block">Battery Level</span>
-                        <span className="font-bold text-white flex items-center space-x-1">
-                          <span className="text-yellow-400">{correspondingStop.arrival_soc_pct}%</span>
-                          <ArrowRight className="w-3 h-3 text-slate-400" />
-                          <span className="text-volt-400">{correspondingStop.departure_soc_pct}%</span>
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 text-[10px] block">Energy Added & Cost</span>
-                        <span className="font-bold text-white">
-                          +{correspondingStop.energy_added_kwh} kWh (${correspondingStop.estimated_cost_usd.toFixed(2)})
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Amenities & Connectors */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-white/5 text-xs">
-                      <div className="flex items-center space-x-1.5 text-slate-400">
-                        <span className="text-[10px] text-slate-500 font-medium">Plugs:</span>
-                        <span className="font-medium text-slate-300">
-                          {correspondingStop.station.connector_types.join(", ")}
-                        </span>
-                      </div>
-
-                      {/* Amenity Icons */}
-                      <div className="flex items-center space-x-2">
-                        {correspondingStop.station.amenities.map((amenity, aIdx) => (
-                          <span key={aIdx} className="p-1 rounded bg-space-750 border border-white/5">
-                            {renderAmenityIcon(amenity)}
-                          </span>
-                        ))}
-                      </div>
+                    <div>
+                      <span className="text-slate-500 dark:text-slate-400 text-[10px] block">Estimated cost</span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        ₹{Math.round(matchingStop.estimated_cost_usd)}
+                      </span>
                     </div>
                   </div>
                 </div>
               )}
-            </React.Fragment>
+            </div>
           );
         })}
 
-        {/* Destination Step */}
+        {/* Destination */}
         <div className="relative">
-          <div className="absolute -left-6 top-1 w-5 h-5 rounded-full bg-space-900 border-2 border-rose-400 flex items-center justify-center">
-            <Flag className="w-3 h-3 text-rose-400" />
-          </div>
-          <div className="bg-space-850/60 rounded-xl p-3.5 border border-white/5 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-rose-400">
-                Destination Arrival
-              </span>
-              <span className="text-xs font-bold text-volt-300 bg-volt-500/10 px-2 py-0.5 rounded border border-volt-500/20">
-                {legs[legs.length - 1]?.end_soc_pct ?? 15}% Battery
-              </span>
-            </div>
-            <p className="text-sm font-bold text-white">{destination.name}</p>
-            <p className="text-xs text-slate-400 truncate">{destination.formatted_address}</p>
+          <span className="absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-red-500 border-2 border-white dark:border-slate-900 flex items-center justify-center text-white text-[9px] font-bold shadow-sm">
+            ●
+          </span>
+          <div>
+            <p className="text-xs font-bold text-slate-900 dark:text-slate-100 leading-tight">
+              {destination.name}
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Destination</p>
           </div>
         </div>
       </div>
     </div>
   );
-};
+}

@@ -1,77 +1,58 @@
 import httpx
 
-routes_to_test = [
+routes = [
     {
-        "name": "Trip 1: LA to SF (Model 3, 70% Battery)",
+        "title": "Test A: Vellore to Chennai (Tata Nexon EV, 70% SOC)",
         "payload": {
-            "start_location": "Los Angeles, CA",
-            "destination": "San Francisco, CA",
+            "start_location": "Vellore, Tamil Nadu",
+            "destination": "Chennai, Tamil Nadu",
             "current_battery_pct": 70.0,
-            "battery_capacity_kwh": 75.0,
-            "vehicle_efficiency_wh_per_km": 150.0,
-            "vehicle_model": "Tesla Model 3 Long Range",
+            "battery_capacity_kwh": 40.5,
+            "vehicle_efficiency_wh_per_km": 138.0,
+            "vehicle_model": "Tata Nexon EV Long Range",
             "min_stop_soc_pct": 10.0,
             "target_dest_soc_pct": 15.0
         }
     },
     {
-        "name": "Trip 2: Seattle to Portland (Ioniq 5, 85% Battery - Direct)",
+        "title": "Test B: Vellore to Bengaluru (Tata Nexon EV, 50% SOC)",
         "payload": {
-            "start_location": "Seattle, WA",
-            "destination": "Portland, OR",
-            "current_battery_pct": 85.0,
-            "battery_capacity_kwh": 77.4,
-            "vehicle_efficiency_wh_per_km": 180.0,
-            "vehicle_model": "Hyundai Ioniq 5 AWD"
-        }
-    },
-    {
-        "name": "Trip 3: NYC to Boston (Model Y, 35% Low Battery)",
-        "payload": {
-            "start_location": "New York, NY",
-            "destination": "Boston, MA",
-            "current_battery_pct": 35.0,
-            "battery_capacity_kwh": 75.0,
-            "vehicle_efficiency_wh_per_km": 168.0,
-            "vehicle_model": "Tesla Model Y Long Range"
-        }
-    },
-    {
-        "name": "Trip 4: LA to Las Vegas (Mustang Mach-E, 50% Battery)",
-        "payload": {
-            "start_location": "Los Angeles, CA",
-            "destination": "Las Vegas, NV",
+            "start_location": "Vellore, Tamil Nadu",
+            "destination": "Bengaluru, Karnataka",
             "current_battery_pct": 50.0,
-            "battery_capacity_kwh": 91.0,
-            "vehicle_efficiency_wh_per_km": 195.0,
-            "vehicle_model": "Ford Mustang Mach-E ER"
+            "battery_capacity_kwh": 40.5,
+            "vehicle_efficiency_wh_per_km": 138.0,
+            "vehicle_model": "Tata Nexon EV Long Range",
+            "min_stop_soc_pct": 10.0,
+            "target_dest_soc_pct": 15.0
         }
     },
     {
-        "name": "Trip 5: Austin to Houston (Porsche Taycan, 60% Battery)",
+        "title": "Test C: Vellore to Tirupati (MG ZS EV, 80% SOC)",
         "payload": {
-            "start_location": "Austin, TX",
-            "destination": "Houston, TX",
-            "current_battery_pct": 60.0,
-            "battery_capacity_kwh": 93.4,
-            "vehicle_efficiency_wh_per_km": 210.0,
-            "vehicle_model": "Porsche Taycan Plus"
+            "start_location": "Vellore, Tamil Nadu",
+            "destination": "Tirupati, Andhra Pradesh",
+            "current_battery_pct": 80.0,
+            "battery_capacity_kwh": 50.3,
+            "vehicle_efficiency_wh_per_km": 150.0,
+            "vehicle_model": "MG ZS EV",
+            "min_stop_soc_pct": 10.0,
+            "target_dest_soc_pct": 15.0
         }
     }
 ]
 
 client = httpx.Client(timeout=20.0)
-
-for item in routes_to_test:
-    res = client.post("http://127.0.0.1:8000/api/route", json=item["payload"])
-    assert res.status_code == 200, f"Failed: {res.status_code} {res.text}"
-    data = res.json()
+for r in routes:
+    resp = client.post("http://127.0.0.1:8000/api/route", json=r["payload"])
+    assert resp.status_code == 200, f"Route failed: {resp.status_code} {resp.text}"
+    data = resp.json()
     s = data["summary"]
-    print(f"=== {item['name']} ===")
+    print(f"=== {r['title']} ===")
     print(f"  Distance: {s['total_distance_km']} km ({s['total_distance_miles']} mi)")
-    print(f"  Drive Time: {s['total_drive_time_min']}m | Charge Time: {s['total_charge_time_min']}m | Total: {s['total_trip_time_min']}m")
     print(f"  Stops Count: {s['num_stops']} | Feasible: {s['is_feasible']}")
-    print(f"  Energy: {s['total_energy_consumed_kwh']} kWh | Cost: ${s['total_charging_cost_usd']:.2f} | CO2 Avoided: {s['co2_saved_kg']} kg")
+    print(f"  Drive Time: {s['total_drive_time_min']}m | Charge Time: {s['total_charge_time_min']}m | Total: {s['total_trip_time_min']}m")
+    print(f"  Energy Consumed: {s['total_energy_consumed_kwh']} kWh | Estimated Cost: Rs. {s['total_charging_cost_usd']:.2f}")
     print(f"  Arrival Battery: {s['final_battery_pct']}%")
     if data["stops"]:
         for st in data["stops"]:

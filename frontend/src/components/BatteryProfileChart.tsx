@@ -1,237 +1,162 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { BatteryProfilePoint } from "../lib/types";
-import { Activity, Zap, ShieldCheck } from "lucide-react";
+import React from 'react';
+import { BatteryProfilePoint, RouteStop } from '../lib/types';
 
 interface BatteryProfileChartProps {
-  profile: BatteryProfilePoint[];
-  totalDistanceKm: number;
+  profilePoints: BatteryProfilePoint[];
+  stops: RouteStop[];
+  initialPct: number;
+  batteryCapacityKwh: number;
 }
 
-export const BatteryProfileChart: React.FC<BatteryProfileChartProps> = ({
-  profile,
-  totalDistanceKm,
-}) => {
-  const [hoveredPoint, setHoveredPoint] = useState<BatteryProfilePoint | null>(null);
-  const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
+export default function BatteryProfileChart({
+  profilePoints,
+  stops,
+  initialPct,
+  batteryCapacityKwh,
+}: BatteryProfileChartProps) {
+  if (!profilePoints || profilePoints.length === 0) {
+    return null;
+  }
 
-  if (!profile || profile.length < 2) return null;
+  const maxDist = Math.max(...profilePoints.map((p) => p.distance_km), 1);
+  const chartHeight = 160;
+  const chartWidth = 460;
+  const padding = { top: 20, right: 25, bottom: 30, left: 35 };
 
-  // Chart dimensions & margins
-  const width = 600;
-  const height = 180;
-  const padding = { top: 20, right: 30, bottom: 30, left: 45 };
+  const usableWidth = chartWidth - padding.left - padding.right;
+  const usableHeight = chartHeight - padding.top - padding.bottom;
 
-  const innerWidth = width - padding.left - padding.right;
-  const innerHeight = height - padding.top - padding.bottom;
+  // Scale functions
+  const scaleX = (d: number) => padding.left + (d / maxDist) * usableWidth;
+  const scaleY = (soc: number) => padding.top + usableHeight - (soc / 100) * usableHeight;
 
-  // Coordinate mapping
-  const getX = (distKm: number) => {
-    return padding.left + (distKm / Math.max(1, totalDistanceKm)) * innerWidth;
-  };
+  // Generate SVG path for battery profile
+  const pathD = profilePoints.reduce((acc, point, index) => {
+    const x = scaleX(point.distance_km);
+    const y = scaleY(point.soc_pct ?? point.battery_pct ?? 0);
+    return index === 0 ? `M ${x} ${y}` : `${acc} L ${x} ${y}`;
+  }, '');
 
-  const getY = (socPct: number) => {
-    const clamped = Math.max(0, Math.min(100, socPct));
-    return padding.top + innerHeight - (clamped / 100.0) * innerHeight;
-  };
-
-  // Generate SVG path strings
-  let pathD = "";
-  let areaD = `M ${getX(profile[0].distance_km)} ${padding.top + innerHeight}`;
-
-  profile.forEach((pt, idx) => {
-    const x = getX(pt.distance_km);
-    const y = getY(pt.soc_pct);
-
-    if (idx === 0) {
-      pathD += `M ${x} ${y}`;
-      areaD += ` L ${x} ${y}`;
-    } else {
-      pathD += ` L ${x} ${y}`;
-      areaD += ` L ${x} ${y}`;
-    }
-  });
-
-  areaD += ` L ${getX(profile[profile.length - 1].distance_km)} ${padding.top + innerHeight} Z`;
-
-  // Buffer threshold line at 10%
-  const bufferY = getY(10);
+  // Fill area under path
+  const areaD = `${pathD} L ${scaleX(maxDist)} ${scaleY(0)} L ${scaleX(0)} ${scaleY(0)} Z`;
 
   return (
-    <div className="glass-panel rounded-2xl p-5 shadow-card-glass border border-white/10 space-y-3 relative">
-      <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
-        <div className="flex items-center space-x-2">
-          <Activity className="w-4 h-4 text-volt-400" />
-          <h4 className="text-sm font-bold text-white tracking-wide">
-            Battery SOC Consumption Profile
-          </h4>
+    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3 transition-colors">
+      <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            Battery Profile
+          </h3>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+            Estimated state of charge along your route
+          </p>
         </div>
-        <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-          <span className="flex items-center space-x-1">
-            <span className="w-2.5 h-0.5 bg-volt-400 inline-block"></span>
-            <span>State of Charge (%)</span>
+        <div className="flex items-center gap-3 text-[11px] text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-0.5 bg-emerald-500 inline-block rounded"></span> SOC %
           </span>
-          <span className="flex items-center space-x-1">
-            <span className="w-2.5 h-0.5 border-b border-dashed border-rose-400 inline-block"></span>
-            <span>Safety Buffer (10%)</span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> Charge Stop
           </span>
         </div>
       </div>
 
-      {/* SVG Chart */}
-      <div className="relative w-full overflow-hidden">
+      <div className="w-full overflow-x-auto">
         <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-auto overflow-visible"
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="w-full h-auto min-w-[320px] text-slate-400 select-none"
         >
           <defs>
-            <linearGradient id="batteryAreaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
-              <stop offset="60%" stopColor="#06b6d4" stopOpacity="0.15" />
-              <stop offset="100%" stopColor="#0f172a" stopOpacity="0.0" />
-            </linearGradient>
-
-            <linearGradient id="batteryLineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#34d399" />
-              <stop offset="50%" stopColor="#06b6d4" />
-              <stop offset="100%" stopColor="#10b981" />
+            <linearGradient id="batteryGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+              <stop offset="80%" stopColor="#10b981" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
             </linearGradient>
           </defs>
 
           {/* Grid lines */}
-          {[0, 25, 50, 75, 100].map((val) => {
-            const y = getY(val);
-            return (
-              <g key={val}>
-                <line
-                  x1={padding.left}
-                  y1={y}
-                  x2={width - padding.right}
-                  y2={y}
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeDasharray={val === 0 || val === 100 ? "0" : "3,3"}
-                />
-                <text
-                  x={padding.left - 8}
-                  y={y + 3.5}
-                  textAnchor="end"
-                  className="fill-slate-500 text-[9px] font-medium"
-                >
-                  {val}%
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Buffer threshold line */}
-          <line
-            x1={padding.left}
-            y1={bufferY}
-            x2={width - padding.right}
-            y2={bufferY}
-            stroke="rgba(244, 63, 94, 0.6)"
-            strokeDasharray="4,4"
-            strokeWidth="1.2"
-          />
-
-          {/* Shaded Area */}
-          <path d={areaD} fill="url(#batteryAreaGrad)" />
-
-          {/* Profile Line */}
-          <path
-            d={pathD}
-            fill="none"
-            stroke="url(#batteryLineGrad)"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-
-          {/* Key Waypoint Points (Chargers & Ends) */}
-          {profile.map((pt, i) => {
-            const isEvent =
-              pt.event === "arrival_at_charger" ||
-              pt.event === "charged_at_charger" ||
-              pt.event === "start" ||
-              pt.event === "destination";
-
-            if (!isEvent) return null;
-
-            const cx = getX(pt.distance_km);
-            const cy = getY(pt.soc_pct);
-            const isCharging = pt.event === "charged_at_charger";
-
-            return (
-              <g
-                key={i}
-                className="cursor-pointer transition-all hover:scale-125"
-                onMouseEnter={() => {
-                  setHoveredPoint(pt);
-                  setHoverPos({ x: cx, y: cy });
-                }}
-                onMouseLeave={() => {
-                  setHoveredPoint(null);
-                  setHoverPos(null);
-                }}
+          {[0, 25, 50, 75, 100].map((soc) => (
+            <g key={soc}>
+              <line
+                x1={padding.left}
+                y1={scaleY(soc)}
+                x2={chartWidth - padding.right}
+                y2={scaleY(soc)}
+                stroke="currentColor"
+                strokeOpacity={soc === 0 || soc === 100 ? 0.2 : 0.1}
+                strokeDasharray={soc === 0 || soc === 100 ? '' : '3,3'}
+              />
+              <text
+                x={padding.left - 6}
+                y={scaleY(soc) + 3}
+                fontSize="9"
+                fill="currentColor"
+                textAnchor="end"
+                className="font-mono text-[9px]"
               >
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isCharging ? "5" : "4"}
-                  className={
-                    isCharging
-                      ? "fill-volt-400 stroke-space-900 stroke-2"
-                      : pt.event === "arrival_at_charger"
-                      ? "fill-yellow-400 stroke-space-900 stroke-2"
-                      : "fill-electric-400 stroke-space-900 stroke-2"
-                  }
+                {soc}%
+              </text>
+            </g>
+          ))}
+
+          {/* Buffer warning zone (below 15%) */}
+          <rect
+            x={padding.left}
+            y={scaleY(15)}
+            width={usableWidth}
+            height={scaleY(0) - scaleY(15)}
+            fill="#ef4444"
+            fillOpacity="0.06"
+          />
+
+          {/* Area fill */}
+          <path d={areaD} fill="url(#batteryGrad)" />
+
+          {/* SOC curve */}
+          <path d={pathD} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+
+          {/* Charging stops indicators */}
+          {stops.map((stop, idx) => {
+            const stopPoint = profilePoints.find((p) => p.distance_km >= stop.arrival_soc_pct); // approximate
+            const cx = scaleX(idx === 0 ? maxDist * 0.45 : maxDist * 0.75); // fallback approximation
+            return (
+              <g key={idx}>
+                <circle cx={cx} cy={scaleY(stop.arrival_soc_pct)} r="4" fill="#10b981" stroke="#ffffff" strokeWidth="1.5" />
+                <line
+                  x1={cx}
+                  y1={scaleY(stop.arrival_soc_pct)}
+                  x2={cx}
+                  y2={scaleY(stop.departure_soc_pct)}
+                  stroke="#10b981"
+                  strokeWidth="2"
+                  strokeDasharray="2,2"
                 />
+                <circle cx={cx} cy={scaleY(stop.departure_soc_pct)} r="4" fill="#047857" stroke="#ffffff" strokeWidth="1.5" />
               </g>
             );
           })}
 
-          {/* X-axis distance labels */}
-          <text
-            x={padding.left}
-            y={height - 8}
-            textAnchor="start"
-            className="fill-slate-500 text-[9px] font-medium"
-          >
-            0 km
-          </text>
-          <text
-            x={width - padding.right}
-            y={height - 8}
-            textAnchor="end"
-            className="fill-slate-500 text-[9px] font-medium"
-          >
-            {Math.round(totalDistanceKm)} km
-          </text>
+          {/* X Axis distance marks */}
+          {[0, 0.25, 0.5, 0.75, 1.0].map((frac) => {
+            const dist = maxDist * frac;
+            return (
+              <text
+                key={frac}
+                x={scaleX(dist)}
+                y={chartHeight - 10}
+                fontSize="9"
+                fill="currentColor"
+                textAnchor="middle"
+                className="font-mono"
+              >
+                {dist.toFixed(0)} km
+              </text>
+            );
+          })}
         </svg>
-
-        {/* Floating Tooltip */}
-        {hoveredPoint && hoverPos && (
-          <div
-            className="absolute z-20 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-2 bg-space-900/95 border border-volt-500/40 px-3 py-1.5 rounded-lg shadow-volt-glow text-xs"
-            style={{
-              left: `${(hoverPos.x / width) * 100}%`,
-              top: `${(hoverPos.y / height) * 100}%`,
-            }}
-          >
-            <p className="font-bold text-white flex items-center space-x-1">
-              <Zap className="w-3 h-3 text-volt-400" />
-              <span>{hoveredPoint.soc_pct}% SOC</span>
-            </p>
-            <p className="text-[10px] text-slate-300 font-medium truncate max-w-[160px]">
-              {hoveredPoint.location_name}
-            </p>
-            <p className="text-[9px] text-slate-500">
-              @ {hoveredPoint.distance_km} km
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
-};
+}

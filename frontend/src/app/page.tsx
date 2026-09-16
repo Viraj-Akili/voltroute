@@ -1,223 +1,257 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
-import dynamic from "next/dynamic";
-import { Header } from "../components/Header";
-import { RoutePlannerForm } from "../components/RoutePlannerForm";
-import { RouteSummaryCard } from "../components/RouteSummaryCard";
-import { BatteryProfileChart } from "../components/BatteryProfileChart";
-import { ItineraryTimeline } from "../components/ItineraryTimeline";
-import { DemoRoutesModal } from "../components/DemoRoutesModal";
-import {
-  RouteRequest,
-  RouteResponse,
-  VehiclePreset,
-  StationResponse,
-} from "../lib/types";
-import {
-  checkHealth,
-  getVehiclePresets,
-  planRoute,
-  getStations,
-} from "../lib/api";
-import { Zap, AlertCircle, Sparkles, MapPin, Compass } from "lucide-react";
-
-// Client-side only Leaflet map
-const MapComponent = dynamic(
-  () => import("../components/MapComponent").then((mod) => mod.MapComponent),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="w-full h-full min-h-[420px] lg:min-h-[580px] rounded-2xl glass-panel border border-white/10 flex items-center justify-center space-x-3 text-volt-400">
-        <div className="w-6 h-6 border-2 border-volt-400 border-t-transparent rounded-full animate-spin"></div>
-        <span className="text-sm font-semibold tracking-wide">
-          Loading OpenStreetMap & Stations...
-        </span>
-      </div>
-    ),
-  }
-);
+import React, { useState, useEffect, useCallback } from 'react';
+import { APIProvider } from '@vis.gl/react-google-maps';
+import Header from '../components/Header';
+import RoutePlannerForm from '../components/RoutePlannerForm';
+import RouteSummaryCard from '../components/RouteSummaryCard';
+import ItineraryTimeline from '../components/ItineraryTimeline';
+import BatteryProfileChart from '../components/BatteryProfileChart';
+import MapComponent from '../components/MapComponent';
+import CustomVehicleModal from '../components/CustomVehicleModal';
+import DemoRoutesModal from '../components/DemoRoutesModal';
+import { planRoute, getChargingStations } from '../lib/api';
+import { RouteRequest, RouteResponse, ChargingStation, VehiclePreset } from '../lib/types';
 
 export default function Home() {
-  const [presets, setPresets] = useState<VehiclePreset[]>([]);
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [routeData, setRouteData] = useState<RouteResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<"online" | "offline" | "checking">("checking");
-  const [stationCount, setStationCount] = useState<number>(0);
-  const [isDemoModalOpen, setIsDemoModalOpen] = useState<boolean>(false);
-  const [selectedStopIndex, setSelectedStopIndex] = useState<number | null>(null);
-  const [formInitialValues, setFormInitialValues] = useState<Partial<RouteRequest>>({});
+  const [allStations, setAllStations] = useState<ChargingStation[]>([]);
+  const [showAllChargingPoints, setShowAllChargingPoints] = useState(true);
+  const [selectedStation, setSelectedStation] = useState<ChargingStation | null>(null);
+  const [highlightedStopIndex, setHighlightedStopIndex] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCustomVehicleModalOpen, setIsCustomVehicleModalOpen] = useState(false);
+  const [isDemoModalOpen, setIsDemoModalOpen] = useState(false);
+  const [customVehicles, setCustomVehicles] = useState<VehiclePreset[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [apiKeyMissing, setApiKeyMissing] = useState(false);
 
-  // Initialize and load default route
+  const [formData, setFormData] = useState<RouteRequest>({
+    start_location: 'Vellore, Tamil Nadu, India',
+    start_lat: 12.9165,
+    start_lng: 79.1325,
+    destination: 'Chennai, Tamil Nadu, India',
+    dest_lat: 13.0827,
+    dest_lng: 80.2707,
+    current_battery_pct: 70,
+    battery_capacity_kwh: 40.5,
+    vehicle_efficiency_wh_per_km: 138,
+    vehicle_model: 'Tata Nexon EV Long Range',
+    min_stop_soc_pct: 10,
+    target_dest_soc_pct: 15,
+    max_charge_soc_pct: 80,
+    optimization_mode: 'fastest',
+  });
+
+  // Theme synchronization
   useEffect(() => {
-    async function init() {
-      // 1. Check health
-      const health = await checkHealth();
-      if (health.status === "ok") {
-        setBackendStatus("online");
-        setStationCount(health.charging_stations_loaded || 0);
-      } else {
-        setBackendStatus("offline");
-      }
-
-      // 2. Fetch vehicle presets
-      const fetchedPresets = await getVehiclePresets();
-      setPresets(fetchedPresets);
-
-      // 3. Auto-calculate initial demo route (LA to SF) for instant WOW factor
-      handleCalculateRoute({
-        start_location: "Los Angeles, CA",
-        destination: "San Francisco, CA",
-        current_battery_pct: 70,
-        battery_capacity_kwh: 75.0,
-        vehicle_efficiency_wh_per_km: 150.0,
-        vehicle_model: "Tesla Model 3 Long Range",
-        min_stop_soc_pct: 10.0,
-        target_dest_soc_pct: 15.0,
-        max_charge_soc_pct: 80.0,
-      });
+    const savedTheme = localStorage.getItem('voltroute_theme') as 'light' | 'dark' | null;
+    const initialTheme = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    setTheme(initialTheme);
+    if (initialTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
-
-    init();
   }, []);
 
-  const handleCalculateRoute = async (request: RouteRequest) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await planRoute(request);
-      setRouteData(response);
-      setBackendStatus("online");
-    } catch (err: any) {
-      console.error("Route planning error:", err);
-      setError(
-        err.message || "Failed to calculate optimal EV route. Please check the locations or backend service."
-      );
-    } finally {
-      setLoading(false);
+  const handleToggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(newTheme);
+    localStorage.setItem('voltroute_theme', newTheme);
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   };
 
-  const handleSelectDemoRoute = (
-    start: string,
-    dest: string,
-    batteryPct: number,
-    vehicleModel: string
-  ) => {
-    const matchedPreset = presets.find((p) => p.name === vehicleModel);
-    const capacity = matchedPreset?.battery_capacity_kwh || 75;
-    const eff = matchedPreset?.efficiency_wh_per_km || 160;
+  // Check Google Maps API Key
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
-    const request: RouteRequest = {
-      start_location: start,
-      destination: dest,
-      current_battery_pct: batteryPct,
-      battery_capacity_kwh: capacity,
-      vehicle_efficiency_wh_per_km: eff,
-      vehicle_model: vehicleModel,
-      min_stop_soc_pct: 10,
-      target_dest_soc_pct: 15,
-      max_charge_soc_pct: 80,
+  useEffect(() => {
+    if (!googleMapsApiKey) {
+      setApiKeyMissing(true);
+    }
+  }, [googleMapsApiKey]);
+
+  // Load charging points along corridor
+  const fetchAllChargingPoints = useCallback(async () => {
+    try {
+      const stations = await getChargingStations(150);
+      setAllStations(stations);
+    } catch (err) {
+      console.warn('Could not load charging stations:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllChargingPoints();
+  }, [fetchAllChargingPoints]);
+
+  // Friendly human error translator
+  const formatFriendlyError = (rawError: any): string => {
+    const text = (rawError?.response?.data?.detail || rawError?.message || String(rawError || '')).toLowerCase();
+    
+    if (text.includes('charging') || text.includes('infeasible') || text.includes('battery') || text.includes('reach')) {
+      return "Charging data isn't available for this route or the vehicle cannot reach the destination with current battery levels. Try starting with a higher battery percentage.";
+    }
+    if (text.includes('location') || text.includes('geocode') || text.includes('route') || text.includes('not found') || text.includes('osrm')) {
+      return "Couldn't calculate this route. Please check the locations and try again.";
+    }
+    return "Something went wrong. Please check your locations and try again.";
+  };
+
+  // Handle route calculation
+  const handlePlanRoute = async (requestData: RouteRequest) => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      const result = await planRoute(requestData);
+      setRouteData(result);
+      if (!result.summary.is_feasible) {
+        setErrorMessage("Charging data isn't available for this route or the battery buffer cannot be met. Try increasing starting battery level.");
+      }
+    } catch (err: any) {
+      console.error('Route calculation error:', err);
+      setErrorMessage(formatFriendlyError(err));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Initial calculation on load
+  useEffect(() => {
+    handlePlanRoute(formData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Save custom vehicle from modal
+  const handleSaveCustomVehicle = (vehicle: VehiclePreset) => {
+    setCustomVehicles((prev) => [...prev, vehicle]);
+    const updatedForm: RouteRequest = {
+      ...formData,
+      vehicle_model: vehicle.model,
+      battery_capacity_kwh: vehicle.battery_capacity_kwh,
+      vehicle_efficiency_wh_per_km: vehicle.efficiency_wh_per_km,
     };
-
-    setFormInitialValues(request);
-    handleCalculateRoute(request);
+    setFormData(updatedForm);
+    handlePlanRoute(updatedForm);
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Navbar Header */}
-      <Header
-        backendStatus={backendStatus}
-        stationCount={stationCount}
-        onOpenDemoModal={() => setIsDemoModalOpen(true)}
-      />
+    <APIProvider apiKey={googleMapsApiKey} solutionChannel="gmp_git_agentskills_v1">
+      <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200">
+        <Header
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          onOpenDemoModal={() => setIsDemoModalOpen(true)}
+        />
 
-      {/* Main Content Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Error Alert if any */}
-        {error && (
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm flex items-start space-x-3 animate-fadeIn">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h5 className="font-bold">Route Calculation Error</h5>
-              <p className="text-xs text-rose-200 mt-0.5">{error}</p>
-            </div>
-            <button
-              onClick={() => setError(null)}
-              className="text-xs text-rose-400 hover:text-white font-bold"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Dashboard Grid: Left Form & Itinerary / Right Interactive Map */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Form & Route Results (5 cols on Desktop) */}
-          <div className="lg:col-span-5 space-y-6">
-            {/* Input Parameters Form */}
+        <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+          {/* Left Panel: Compact Planner & Itinerary */}
+          <section
+            aria-label="Trip Planner"
+            className="w-full lg:w-[380px] xl:w-[410px] flex-shrink-0 flex flex-col h-auto lg:h-[calc(100vh-56px)] overflow-y-auto border-r border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 z-10 p-4 sm:p-5 space-y-4"
+          >
             <RoutePlannerForm
-              presets={presets}
-              loading={loading}
-              onPlanRoute={handleCalculateRoute}
-              initialValues={formInitialValues}
+              formData={formData}
+              onChange={setFormData}
+              onSubmit={handlePlanRoute}
+              onOpenCustomVehicleModal={() => setIsCustomVehicleModalOpen(true)}
+              isLoading={isLoading}
+              customVehicles={customVehicles}
             />
 
-            {/* Trip Results Section (rendered once route is available) */}
-            {routeData && (
-              <div className="space-y-6 animate-fadeIn">
-                {/* Trip Summary Card */}
-                <RouteSummaryCard
-                  summary={routeData.summary}
-                  origin={routeData.origin}
-                  destination={routeData.destination}
-                />
-
-                {/* Battery SOC Graph */}
-                <BatteryProfileChart
-                  profile={routeData.battery_profile}
-                  totalDistanceKm={routeData.summary.total_distance_km}
-                />
-
-                {/* Turn-by-turn Leg & Stop Timeline */}
-                <ItineraryTimeline
-                  origin={routeData.origin}
-                  destination={routeData.destination}
-                  legs={routeData.legs}
-                  stops={routeData.stops}
-                  initialSoc={routeData.summary.initial_battery_pct}
-                />
+            {/* Friendly Error Notice */}
+            {errorMessage && (
+              <div
+                role="alert"
+                className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs leading-relaxed shadow-sm flex items-start gap-2.5"
+              >
+                <span className="text-base leading-none">⚠️</span>
+                <span>{errorMessage}</span>
               </div>
             )}
-          </div>
 
-          {/* Right Column: Sticky Interactive Leaflet Map (7 cols on Desktop) */}
-          <div className="lg:col-span-7 lg:sticky lg:top-20 space-y-4">
+            {/* Calculated Trip Itinerary */}
+            {routeData && (
+              <ItineraryTimeline
+                legs={routeData.legs}
+                stops={routeData.stops}
+                origin={routeData.origin}
+                destination={routeData.destination}
+                onHoverStop={(idx) => setHighlightedStopIndex(idx)}
+                onSelectStop={(stop) => setSelectedStation(stop.station)}
+              />
+            )}
+
+            {/* Battery SOC Profile Chart */}
+            {routeData && routeData.battery_profile && routeData.battery_profile.length > 0 && (
+              <BatteryProfileChart
+                profilePoints={routeData.battery_profile}
+                stops={routeData.stops}
+                initialPct={routeData.summary.initial_battery_pct}
+                batteryCapacityKwh={formData.battery_capacity_kwh}
+              />
+            )}
+          </section>
+
+          {/* Right Panel: Hero Google Map */}
+          <section aria-label="Interactive Map" className="flex-1 relative h-[520px] lg:h-[calc(100vh-56px)] w-full">
+            {routeData && (
+              <RouteSummaryCard
+                summary={routeData.summary}
+                origin={routeData.origin}
+                destination={routeData.destination}
+              />
+            )}
             <MapComponent
+              theme={theme}
               routeData={routeData}
-              allCorridorStations={routeData?.candidate_stations || []}
-              selectedStopIndex={selectedStopIndex}
-              onSelectStop={(idx) => setSelectedStopIndex(idx)}
+              allStations={allStations}
+              showAllStations={showAllChargingPoints}
+              selectedStation={selectedStation}
+              onSelectStation={setSelectedStation}
+              highlightedStopIndex={highlightedStopIndex}
+              apiKeyMissing={apiKeyMissing}
             />
-          </div>
-        </div>
-      </main>
+          </section>
+        </main>
 
-      {/* Demo Routes Selection Modal */}
-      <DemoRoutesModal
-        isOpen={isDemoModalOpen}
-        onClose={() => setIsDemoModalOpen(false)}
-        onSelectRoute={handleSelectDemoRoute}
-      />
+        {/* Custom Vehicle Modal */}
+        <CustomVehicleModal
+          isOpen={isCustomVehicleModalOpen}
+          onClose={() => setIsCustomVehicleModalOpen(false)}
+          onSave={handleSaveCustomVehicle}
+        />
 
-      {/* Footer */}
-      <footer className="w-full border-t border-white/5 py-4 px-6 text-center text-xs text-slate-500">
-        <p>
-          VoltRoute — Intelligent EV Route Planner • Powered by FastAPI & Next.js • OpenStreetMap & OSRM
-        </p>
-      </footer>
-    </div>
+        {/* Demo Routes Modal */}
+        {isDemoModalOpen && (
+          <DemoRoutesModal
+            onClose={() => setIsDemoModalOpen(false)}
+            onSelectRoute={(route) => {
+              const updatedForm: RouteRequest = {
+                ...formData,
+                start_location: route.start_location,
+                start_lat: route.start_lat,
+                start_lng: route.start_lng,
+                destination: route.destination,
+                dest_lat: route.dest_lat,
+                dest_lng: route.dest_lng,
+                vehicle_model: route.vehicle_model,
+                battery_capacity_kwh: route.battery_capacity_kwh,
+                vehicle_efficiency_wh_per_km: route.vehicle_efficiency_wh_per_km,
+                current_battery_pct: route.current_battery_pct,
+              };
+              setFormData(updatedForm);
+              handlePlanRoute(updatedForm);
+              setIsDemoModalOpen(false);
+            }}
+          />
+        )}
+      </div>
+    </APIProvider>
   );
 }

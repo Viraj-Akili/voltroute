@@ -267,20 +267,31 @@ async def optimize_ev_route(
                 if soc_at_cand < 3.0:
                     continue
 
-                # Power score (higher kW is better)
-                power_score = (cand["power_kw"] / 350.0) * 45.0
+                opt_mode = getattr(request, "optimization_mode", "fastest") or "fastest"
+
+                # Power score (higher kW is better for fastest)
+                if opt_mode == "cheapest":
+                    power_score = (cand["power_kw"] / 350.0) * 20.0
+                    price_score = max(0.0, 35.0 - (cand.get("price_per_kwh", 20.0) * 1.2))
+                elif opt_mode == "fewest_stops":
+                    power_score = (cand["power_kw"] / 350.0) * 30.0
+                    price_score = 0.0
+                else: # fastest
+                    power_score = (cand["power_kw"] / 350.0) * 50.0
+                    price_score = 0.0
                 
                 # Depletion score (optimal arrival is 10-18% SOC for fast charging)
                 ideal_arrival = min_stop_soc + 4.0
                 depletion_score = max(0.0, 30.0 - abs(soc_at_cand - ideal_arrival) * 1.5)
                 
                 # Detour penalty
-                detour_pen = cand.get("detour_km", 0.0) * 2.0
+                detour_pen = cand.get("detour_km", 0.0) * (3.0 if opt_mode == "fastest" else 2.0)
 
-                # Distance progress score (prefer stopping further along route)
-                progress_score = (leg_dist / max_safe_leg_dist) * 25.0
+                # Distance progress score (prefer stopping further along route, especially in fewest_stops)
+                progress_weight = 40.0 if opt_mode == "fewest_stops" else 25.0
+                progress_score = (leg_dist / max_safe_leg_dist) * progress_weight
 
-                score = power_score + depletion_score + progress_score - detour_pen
+                score = power_score + depletion_score + progress_score + price_score - detour_pen
                 if score > best_score:
                     best_score = score
                     best_candidate = cand
@@ -348,7 +359,8 @@ async def optimize_ev_route(
                 battery_capacity_kwh=battery_capacity,
                 station_power_kw=best_candidate["power_kw"]
             )
-            cost = energy_added * best_candidate.get("price_per_kwh", 0.36)
+            station_price = best_candidate.get("price_per_kwh") or (20.0 if best_candidate.get("country") == "India" else 0.36)
+            cost = energy_added * station_price
 
             total_charge_time_min += charge_duration
             total_energy_charged_kwh += energy_added
@@ -369,7 +381,7 @@ async def optimize_ev_route(
                 total_ports=best_candidate.get("total_ports", 8),
                 available_ports=best_candidate.get("available_ports", 6),
                 connector_types=best_candidate.get("connector_types", ["CCS", "NACS"]),
-                price_per_kwh=best_candidate.get("price_per_kwh", 0.36),
+                price_per_kwh=station_price,
                 amenities=best_candidate.get("amenities", ["Restrooms", "Dining"]),
                 is_operational=best_candidate.get("is_operational", True),
                 detour_km=best_candidate.get("detour_km", 0.0)

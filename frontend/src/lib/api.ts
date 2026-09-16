@@ -22,76 +22,76 @@ export async function getVehiclePresets(): Promise<VehiclePreset[]> {
     console.warn("Failed fetching presets from API, using fallback presets:", err);
     return [
       {
-        id: "tesla-model-3-lr",
-        name: "Tesla Model 3 Long Range",
-        make: "Tesla",
-        model: "Model 3 LR",
+        id: "tata-nexon-ev-lr",
+        name: "Tata Nexon EV Long Range",
+        make: "Tata",
+        model: "Nexon EV LR",
         year: 2024,
-        battery_capacity_kwh: 75.0,
+        battery_capacity_kwh: 40.5,
+        efficiency_wh_per_km: 138.0,
+        max_charge_rate_kw: 50.0,
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "India's most popular electric SUV with 40.5 kWh LFP pack and real-world range of ~280 km."
+      },
+      {
+        id: "tata-punch-ev-lr",
+        name: "Tata Punch EV Long Range",
+        make: "Tata",
+        model: "Punch EV LR",
+        year: 2024,
+        battery_capacity_kwh: 35.0,
+        efficiency_wh_per_km: 128.0,
+        max_charge_rate_kw: 50.0,
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "Compact electric SUV built on Tata's pure EV acti.ev platform."
+      },
+      {
+        id: "mg-zs-ev",
+        name: "MG ZS EV",
+        make: "MG",
+        model: "ZS EV",
+        year: 2024,
+        battery_capacity_kwh: 50.3,
         efficiency_wh_per_km: 150.0,
-        max_charge_rate_kw: 250.0,
-        supported_connectors: ["NACS", "CCS"],
-        description: "High efficiency aero sedan with 250kW Supercharging."
+        max_charge_rate_kw: 80.0,
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "Premium electric crossover with 50.3 kWh battery and 80kW DC fast charging."
       },
       {
-        id: "tesla-model-y-lr",
-        name: "Tesla Model Y Long Range",
-        make: "Tesla",
-        model: "Model Y LR",
+        id: "mahindra-xuv400",
+        name: "Mahindra XUV400 EV",
+        make: "Mahindra",
+        model: "XUV400 EL Pro",
         year: 2024,
-        battery_capacity_kwh: 75.0,
-        efficiency_wh_per_km: 168.0,
-        max_charge_rate_kw: 250.0,
-        supported_connectors: ["NACS", "CCS"],
-        description: "The world's best-selling electric crossover."
+        battery_capacity_kwh: 39.4,
+        efficiency_wh_per_km: 145.0,
+        max_charge_rate_kw: 50.0,
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "Spacious electric SUV from Mahindra with fast acceleration and 39.4 kWh capacity."
       },
       {
-        id: "hyundai-ioniq-5",
-        name: "Hyundai Ioniq 5 AWD (77.4 kWh)",
+        id: "tata-tiago-ev",
+        name: "Tata Tiago EV Long Range",
+        make: "Tata",
+        model: "Tiago EV LR",
+        year: 2024,
+        battery_capacity_kwh: 24.0,
+        efficiency_wh_per_km: 115.0,
+        max_charge_rate_kw: 30.0,
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "Efficient city EV hatchback with 24 kWh pack for intercity commutes."
+      },
+      {
+        id: "hyundai-ioniq-5-in",
+        name: "Hyundai Ioniq 5 (72.6 kWh)",
         make: "Hyundai",
         model: "Ioniq 5",
         year: 2024,
-        battery_capacity_kwh: 77.4,
-        efficiency_wh_per_km: 182.0,
+        battery_capacity_kwh: 72.6,
+        efficiency_wh_per_km: 165.0,
         max_charge_rate_kw: 235.0,
-        supported_connectors: ["CCS", "NACS"],
-        description: "800V ultra-fast architecture (10% to 80% in ~18 mins)."
-      },
-      {
-        id: "ford-mustang-mach-e",
-        name: "Ford Mustang Mach-E Extended Range",
-        make: "Ford",
-        model: "Mustang Mach-E ER",
-        year: 2024,
-        battery_capacity_kwh: 91.0,
-        efficiency_wh_per_km: 195.0,
-        max_charge_rate_kw: 150.0,
-        supported_connectors: ["CCS", "NACS"],
-        description: "Spacious performance SUV with long-range battery."
-      },
-      {
-        id: "porsche-taycan",
-        name: "Porsche Taycan Performance Battery Plus",
-        make: "Porsche",
-        model: "Taycan Plus",
-        year: 2024,
-        battery_capacity_kwh: 93.4,
-        efficiency_wh_per_km: 210.0,
-        max_charge_rate_kw: 270.0,
-        supported_connectors: ["CCS", "Type 2"],
-        description: "800V sports EV with sustained 270kW charging."
-      },
-      {
-        id: "chevrolet-bolt-ev",
-        name: "Chevrolet Bolt EV",
-        make: "Chevrolet",
-        model: "Bolt EV",
-        year: 2023,
-        battery_capacity_kwh: 65.0,
-        efficiency_wh_per_km: 160.0,
-        max_charge_rate_kw: 55.0,
-        supported_connectors: ["CCS"],
-        description: "Affordable compact EV with 55kW DC fast charging."
+        supported_connectors: ["CCS2", "CCS", "Type 2"],
+        description: "800V ultra-fast charging architecture capable of 10% to 80% charge in ~18 minutes."
       }
     ];
   }
@@ -120,9 +120,10 @@ export async function planRoute(request: RouteRequest): Promise<RouteResponse> {
   return await res.json();
 }
 
-export async function getStations(limit: number = 250): Promise<StationResponse[]> {
+export async function getStations(params: number | { limit?: number } = 250): Promise<StationResponse[]> {
+  const limitVal = typeof params === "number" ? params : params?.limit || 250;
   try {
-    const res = await fetch(`${API_BASE}/api/stations?limit=${limit}`);
+    const res = await fetch(`${API_BASE}/api/stations?limit=${limitVal}`);
     if (!res.ok) throw new Error(`Stations fetch failed: ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -130,3 +131,6 @@ export async function getStations(limit: number = 250): Promise<StationResponse[
     return [];
   }
 }
+
+export const getChargingStations = getStations;
+

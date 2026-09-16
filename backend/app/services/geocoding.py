@@ -5,89 +5,57 @@ from app.schemas.route import LocationInput, ResolvedLocation
 
 logger = logging.getLogger(__name__)
 
-# Predefined dictionary for instant, offline-friendly resolution of popular hubs & cities
+# Predefined dictionary for instant, offline-friendly resolution with primary focus on India (Vellore & Tamil Nadu)
 KNOWN_LOCATIONS: Dict[str, Tuple[float, float, str]] = {
-    # California
+    # India - Tamil Nadu & South India Primary Corridors
+    "vellore": (12.9165, 79.1325, "Vellore, Tamil Nadu, India"),
+    "vellore, tamil nadu": (12.9165, 79.1325, "Vellore, Tamil Nadu, India"),
+    "vellore, tn": (12.9165, 79.1325, "Vellore, Tamil Nadu, India"),
+    "chennai": (13.0827, 80.2707, "Chennai, Tamil Nadu, India"),
+    "chennai, tamil nadu": (13.0827, 80.2707, "Chennai, Tamil Nadu, India"),
+    "madras": (13.0827, 80.2707, "Chennai, Tamil Nadu, India"),
+    "bengaluru": (12.9716, 77.5946, "Bengaluru, Karnataka, India"),
+    "bangalore": (12.9716, 77.5946, "Bengaluru, Karnataka, India"),
+    "bengaluru, karnataka": (12.9716, 77.5946, "Bengaluru, Karnataka, India"),
+    "tirupati": (13.6288, 79.4192, "Tirupati, Andhra Pradesh, India"),
+    "tirupati, andhra pradesh": (13.6288, 79.4192, "Tirupati, Andhra Pradesh, India"),
+    "pondicherry": (11.9416, 79.8083, "Puducherry, India"),
+    "puducherry": (11.9416, 79.8083, "Puducherry, India"),
+    "kanchipuram": (12.8342, 79.7036, "Kanchipuram, Tamil Nadu, India"),
+    "sriperumbudur": (12.9667, 79.9500, "Sriperumbudur, Tamil Nadu, India"),
+    "ranipet": (12.9272, 79.3328, "Ranipet, Tamil Nadu, India"),
+    "ambur": (12.7904, 78.7166, "Ambur, Tamil Nadu, India"),
+    "vaniyambadi": (12.6825, 78.6186, "Vaniyambadi, Tamil Nadu, India"),
+    "krishnagiri": (12.5186, 78.2137, "Krishnagiri, Tamil Nadu, India"),
+    "hosur": (12.7409, 77.8253, "Hosur, Tamil Nadu, India"),
+    "chittoor": (13.2172, 79.1003, "Chittoor, Andhra Pradesh, India"),
+    "coimbatore": (11.0168, 76.9558, "Coimbatore, Tamil Nadu, India"),
+    "salem": (11.6643, 78.1460, "Salem, Tamil Nadu, India"),
+    "madurai": (9.9252, 78.1198, "Madurai, Tamil Nadu, India"),
+    "trichy": (10.7905, 78.7047, "Tiruchirappalli, Tamil Nadu, India"),
+    "tiruchirappalli": (10.7905, 78.7047, "Tiruchirappalli, Tamil Nadu, India"),
+    "hyderabad": (17.3850, 78.4867, "Hyderabad, Telangana, India"),
+    "mumbai": (19.0760, 72.8777, "Mumbai, Maharashtra, India"),
+    "pune": (18.5204, 73.8567, "Pune, Maharashtra, India"),
+    "delhi": (28.6139, 77.2090, "New Delhi, Delhi, India"),
+    "new delhi": (28.6139, 77.2090, "New Delhi, Delhi, India"),
+    "kochi": (9.9312, 76.2673, "Kochi, Kerala, India"),
+
+    # International Popular Locations (Maintained for backward compatibility)
     "los angeles": (34.0522, -118.2437, "Los Angeles, California, US"),
     "los angeles, ca": (34.0522, -118.2437, "Los Angeles, California, US"),
-    "la": (34.0522, -118.2437, "Los Angeles, California, US"),
     "san francisco": (37.7749, -122.4194, "San Francisco, California, US"),
     "san francisco, ca": (37.7749, -122.4194, "San Francisco, California, US"),
-    "sf": (37.7749, -122.4194, "San Francisco, California, US"),
-    "san diego": (32.7157, -117.1611, "San Diego, California, US"),
-    "san diego, ca": (32.7157, -117.1611, "San Diego, California, US"),
-    "san jose": (37.3382, -121.8863, "San Jose, California, US"),
-    "san jose, ca": (37.3382, -121.8863, "San Jose, California, US"),
-    "sacramento": (38.5816, -121.4944, "Sacramento, California, US"),
-    "sacramento, ca": (38.5816, -121.4944, "Sacramento, California, US"),
-    "fresno": (36.7468, -119.7726, "Fresno, California, US"),
-    "bakersfield": (35.3733, -119.0187, "Bakersfield, California, US"),
-    "kettleman city": (35.9868, -119.9575, "Kettleman City, California, US"),
-
-    # Pacific Northwest
     "seattle": (47.6062, -122.3321, "Seattle, Washington, US"),
-    "seattle, wa": (47.6062, -122.3321, "Seattle, Washington, US"),
     "portland": (45.5152, -122.6784, "Portland, Oregon, US"),
-    "portland, or": (45.5152, -122.6784, "Portland, Oregon, US"),
-    "vancouver": (49.2827, -123.1207, "Vancouver, BC, Canada"),
-
-    # Southwest & Mountain
-    "las vegas": (36.1699, -115.1398, "Las Vegas, Nevada, US"),
-    "las vegas, nv": (36.1699, -115.1398, "Las Vegas, Nevada, US"),
-    "reno": (39.5296, -119.8138, "Reno, Nevada, US"),
-    "phoenix": (33.4484, -112.0740, "Phoenix, Arizona, US"),
-    "phoenix, az": (33.4484, -112.0740, "Phoenix, Arizona, US"),
-    "tucson": (32.2226, -110.9747, "Tucson, Arizona, US"),
-    "salt lake city": (40.7608, -111.8910, "Salt Lake City, Utah, US"),
-    "salt lake city, ut": (40.7608, -111.8910, "Salt Lake City, Utah, US"),
-    "denver": (39.7392, -104.9903, "Denver, Colorado, US"),
-    "denver, co": (39.7392, -104.9903, "Denver, Colorado, US"),
-
-    # Texas & South
-    "austin": (30.2672, -97.7431, "Austin, Texas, US"),
-    "austin, tx": (30.2672, -97.7431, "Austin, Texas, US"),
-    "dallas": (32.7767, -96.7970, "Dallas, Texas, US"),
-    "dallas, tx": (32.7767, -96.7970, "Dallas, Texas, US"),
-    "houston": (29.7604, -95.3698, "Houston, Texas, US"),
-    "houston, tx": (29.7604, -95.3698, "Houston, Texas, US"),
-    "san antonio": (29.4241, -98.4936, "San Antonio, Texas, US"),
-    "san antonio, tx": (29.4241, -98.4936, "San Antonio, Texas, US"),
-
-    # Midwest
-    "chicago": (41.8781, -87.6298, "Chicago, Illinois, US"),
-    "chicago, il": (41.8781, -87.6298, "Chicago, Illinois, US"),
-    "detroit": (42.3314, -83.0458, "Detroit, Michigan, US"),
-    "detroit, mi": (42.3314, -83.0458, "Detroit, Michigan, US"),
-    "indianapolis": (39.7684, -86.1581, "Indianapolis, Indiana, US"),
-    "kansas city": (39.0997, -94.5786, "Kansas City, Missouri, US"),
-    "st. louis": (38.6270, -90.1994, "St. Louis, Missouri, US"),
-    "columbus": (39.9612, -82.9988, "Columbus, Ohio, US"),
-
-    # East Coast
     "new york": (40.7128, -74.0060, "New York, New York, US"),
     "new york, ny": (40.7128, -74.0060, "New York, New York, US"),
-    "nyc": (40.7128, -74.0060, "New York, New York, US"),
     "boston": (42.3601, -71.0589, "Boston, Massachusetts, US"),
-    "boston, ma": (42.3601, -71.0589, "Boston, Massachusetts, US"),
-    "philadelphia": (39.9526, -75.1652, "Philadelphia, Pennsylvania, US"),
-    "philadelphia, pa": (39.9526, -75.1652, "Philadelphia, Pennsylvania, US"),
-    "washington": (38.9072, -77.0369, "Washington, District of Columbia, US"),
-    "washington, dc": (38.9072, -77.0369, "Washington, District of Columbia, US"),
-    "dc": (38.9072, -77.0369, "Washington, District of Columbia, US"),
-    "baltimore": (39.2904, -76.6122, "Baltimore, Maryland, US"),
-    "richmond": (37.5407, -77.4360, "Richmond, Virginia, US"),
-    "atlanta": (33.7490, -84.3880, "Atlanta, Georgia, US"),
-    "atlanta, ga": (33.7490, -84.3880, "Atlanta, Georgia, US"),
-    "orlando": (28.5383, -81.3792, "Orlando, Florida, US"),
-    "orlando, fl": (28.5383, -81.3792, "Orlando, Florida, US"),
-    "miami": (25.7617, -80.1918, "Miami, Florida, US"),
-    "miami, fl": (25.7617, -80.1918, "Miami, Florida, US"),
-
-    # Europe / UK
+    "las vegas": (36.1699, -115.1398, "Las Vegas, Nevada, US"),
+    "austin": (30.2672, -97.7431, "Austin, Texas, US"),
+    "houston": (29.7604, -95.3698, "Houston, Texas, US"),
     "london": (51.5074, -0.1278, "London, Greater London, United Kingdom"),
-    "paris": (48.8566, 2.3522, "Paris, Île-de-France, France"),
-    "amsterdam": (52.3676, 4.9041, "Amsterdam, North Holland, Netherlands"),
-    "brussels": (50.8503, 4.3517, "Brussels, Belgium")
+    "paris": (48.8566, 2.3522, "Paris, Île-de-France, France")
 }
 
 async def geocode_location(location: str | LocationInput | Dict) -> ResolvedLocation:
@@ -163,11 +131,11 @@ async def geocode_location(location: str | LocationInput | Dict) -> ResolvedLoca
     except Exception as e:
         logger.warning(f"OSM Nominatim geocoding failed for '{location_str}': {e}")
 
-    # Default fallback to San Francisco if unresolved
-    logger.warning(f"Could not geocode '{location_str}'. Using San Francisco as default.")
+    # Default fallback to Vellore, Tamil Nadu, India
+    logger.warning(f"Could not geocode '{location_str}'. Using Vellore, Tamil Nadu as default.")
     return ResolvedLocation(
-        name=location_str or "San Francisco, CA",
-        latitude=37.7749,
-        longitude=-122.4194,
-        formatted_address="San Francisco, California, US (Default fallback)"
+        name=location_str or "Vellore, Tamil Nadu",
+        latitude=12.9165,
+        longitude=79.1325,
+        formatted_address="Vellore, Tamil Nadu, India"
     )

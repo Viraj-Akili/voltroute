@@ -1,11 +1,11 @@
 # ⚡ VoltRoute — Intelligent EV Route Planner
 
-> **Production-grade full-stack EV route planning web application that simulates real-world battery consumption and optimizes fast-charging stops to minimize total journey time.**
+> **Production-grade full-stack EV route planning web application that simulates real-world battery consumption, projects real charging corridors, and optimizes fast-charging stops using Google Maps Platform.**
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Next.js](https://img.shields.io/badge/Next.js-14.2+-000000.svg?logo=next.js&logoColor=white)](https://nextjs.org)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-3.4+-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-[![Leaflet](https://img.shields.io/badge/Leaflet-1.9+-199900.svg?logo=leaflet&logoColor=white)](https://leafletjs.com)
+[![Google Maps Platform](https://img.shields.io/badge/Google%20Maps-Platform-4285F4.svg?logo=googlemaps&logoColor=white)](https://developers.google.com/maps)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
 
 ---
@@ -16,31 +16,33 @@ Planning long-distance electric vehicle (EV) road trips requires balancing multi
 1. **Battery Capacity & State of Charge (SOC %)**: Knowing when the battery will reach critical buffer levels.
 2. **Vehicle Efficiency & Consumption**: Variations in Wh/km across vehicle aerodynamics and highway speeds.
 3. **Charging Speed Curves**: Batteries charge significantly faster between 10% and 50% than above 80% (non-linear taper curve).
-4. **Charging Station Placement & Detour**: Finding high-power (150kW–350kW) DC fast chargers along highway corridors without excessive detour off the route.
+4. **Charging Station Placement & Detour**: Finding high-power DC fast chargers (50kW–350kW) along highway corridors without excessive detour off the route.
 
-**VoltRoute** solves this by fetching actual road network geometry (via OSRM / OpenStreetMap), projecting candidate charging infrastructure onto the travel corridor, and executing a forward search optimization algorithm that selects the fastest combination of driving legs and charging stops.
+**VoltRoute** delivers a production-grade experience with **Google Maps Platform** for interactive mapping, Google Places Autocomplete for worldwide and Indian location search, live corridor charging station visualization, and a physics-backed optimization engine tailored for Indian and global EV journeys.
 
 ---
 
 ## 🚀 Key Features
 
-- **⚡ Physics-Based EV Battery Modeling**:
+- **🗺️ Google Maps Platform Integration**:
+  - Full Google Maps vector map with dynamic light and dark theme styling.
+  - **Google Places Autocomplete** with instant geocoding, recent history, and live worldwide search.
+  - Smooth auto-fitting bounds to route polylines and charging points.
+  - Interactive custom SVG markers: 🔵 Origin, 🔴 Destination, 🟢 Recommended Charging Stops, and 🟡 Corridor Fast Chargers.
+  - **One-Click Navigation**: "Navigate in Google Maps" links for every charging stop and candidate station.
+- **⚡ Physics-Based EV Battery Modeling & Multi-Objective Optimization**:
   - Simulates dynamic energy consumption based on usable capacity (kWh), vehicle efficiency (Wh/km), and real-world highway overhead factors.
   - Realistic non-linear charging curve simulation (peak power below 50% SOC, 72% power up to 80% SOC, and heavy taper above 80% to protect cell health).
-- **🗺️ Interactive Leaflet / OpenStreetMap Visualization**:
-  - Rendered with custom glowing SVG markers for Origin, Destination, and intermediate Charging Stops.
-  - Displays corridor fast chargers with interactive popups showing power rating (kW), operator, connector types, and detour distances.
-  - Layer switcher for CartoDB Voyager, Dark Matter, and standard OpenStreetMap tiles.
+  - **3 Optimization Modes**: `Fastest` (prioritizes high-kW chargers and low trip time), `Cheapest` (prioritizes low ₹/kWh rates), and `Fewest Stops` (maximizes leg distance).
+- **🇮🇳 India & Global Corridor Focus**:
+  - Preloaded with major Indian EV charging networks (Tata Power EZ Charge, Zeon Charging, Jio-bp pulse, Ather Grid, ChargeZone, Statiq, Shell Recharge) across Tamil Nadu, Karnataka, Andhra Pradesh, and golden quadrilateral highways.
+  - Preloaded EV presets: *Tata Nexon EV LR, Tata Punch EV, MG ZS EV, Mahindra XUV400, Hyundai Ioniq 5, BYD Atto 3, Tesla Model 3 LR, BMW i4*.
 - **📊 Interactive Battery SOC Profile Chart**:
-  - Visual SVG graph plotting battery percentage along the entire trip distance.
-  - Clearly shows depletion slopes during driving and vertical boosts during high-speed charging stops.
+  - Visual SVG graph plotting battery percentage along the entire trip distance with elevation buffer guides.
 - **📋 Turn-by-Turn Leg & Stop Itinerary**:
-  - Detailed leg-by-leg timeline displaying departure/arrival SOC %, energy consumed (kWh), charging duration (minutes), plug types (CCS, NACS), estimated charging cost ($), and amenities (Coffee, Dining, Restrooms, WiFi).
-- **🚗 Built-in EV Presets**:
-  - Preloaded specs for popular EVs: *Tesla Model 3 LR, Tesla Model Y LR, Hyundai Ioniq 5, Ford Mustang Mach-E, Porsche Taycan, Rivian R1T, Chevrolet Bolt EV, Polestar 2, BMW i4*.
-  - Full support for custom battery capacity and efficiency parameters.
+  - Detailed leg-by-leg timeline displaying departure/arrival SOC %, energy consumed (kWh), charging duration (minutes), plug types (CCS-2, Type 2, GB/T, NACS), estimated charging cost in ₹ / $, and amenities.
 - **✨ 1-Click Popular Road Trips**:
-  - Instant testing with curated routes: *Los Angeles ➔ San Francisco (I-5)*, *Seattle ➔ Portland (PNW)*, *NYC ➔ Boston (I-95)*, *LA ➔ Las Vegas (I-15)*, *Austin ➔ Houston*, and *London ➔ Paris*.
+  - Instant testing with curated routes: *Vellore ➔ Chennai*, *Vellore ➔ Bengaluru*, *Vellore ➔ Tirupati*, *Chennai ➔ Bengaluru*, *Vellore ➔ Pondicherry*, and *London ➔ Manchester*.
 
 ---
 
@@ -49,13 +51,13 @@ Planning long-distance electric vehicle (EV) road trips requires balancing multi
 The route planner implements a multi-stage optimization pipeline:
 
 ```
-[Start & End Input] ➔ [Geocoding] ➔ [OSRM Road Geometry & Polyline]
+[Start & End Input] ➔ [Google Places / Coordinates] ➔ [Road Geometry & Polyline]
                                             │
                                             ▼
-                    [Spatial Projection of 200+ Seeded Stations]
+                    [Spatial Projection of Seeded & Corridor Stations]
                                             │
                                             ▼
-                       [Direct Trip Feasibility Check]
+                        [Direct Trip Feasibility Check]
                         /                             \
                 (Can Reach Dest)               (Needs Charging)
                       /                                 \
@@ -63,7 +65,7 @@ The route planner implements a multi-stage optimization pipeline:
                                                         │
                                             [Filter Reachable Stations]
                                                         │
-                                            [Multi-Factor Scoring]
+                                            [Multi-Factor Strategy Scoring]
                                                         │
                                             [Simulate Non-Linear Charging]
                                                         │
@@ -74,15 +76,11 @@ The route planner implements a multi-stage optimization pipeline:
 Each candidate charging station in SQLite is projected onto the route polyline segments:
 - Perpendicular distance from route line = $\text{Detour Distance (km)}$
 - Cumulative distance from route start = $\text{Distance Along Route (km)}$
-- Only stations within a 30 km detour buffer are considered.
+- Only stations within a 35 km detour buffer are considered.
 
 ### 2. Multi-Factor Candidate Scoring
-When the vehicle battery approaches the safe buffer threshold (e.g. 10–15% SOC), reachable stations are evaluated with a composite scoring function:
-$$\text{Score} = \text{Power Score} + \text{Depletion Window Score} + \text{Progress Score} - \text{Detour Penalty}$$
-- **Power Score**: $\frac{\min(P_{\text{station}}, P_{\text{vehicle}})}{350\,\text{kW}} \times 45$ (strongly favors 250kW–350kW ultra-fast chargers).
-- **Depletion Window Score**: Rewards arriving around 10%–18% SOC where EV charging curve accepts maximum amperage.
-- **Progress Score**: Rewards stopping further along the route to minimize unnecessary micro-stops.
-- **Detour Penalty**: $\text{Detour (km)} \times 2.0$ penalizes stations far from highway exits.
+When the vehicle battery approaches the safe buffer threshold (e.g. 10–15% SOC), reachable stations are evaluated with a composite scoring function adjusted by the chosen optimization mode:
+$$\text{Score} = \text{Power Score} + \text{Depletion Window Score} + \text{Progress Score} - \text{Detour Penalty} - \text{Price Penalty}$$
 
 ### 3. Non-Linear Charging Physics Model
 Charging duration is calculated across 5% incremental SOC slices using a piecewise power taper model:
@@ -102,7 +100,7 @@ voltroute/
 │   │   ├── database.py       # SQLite database & sessionmaker
 │   │   ├── main.py           # FastAPI application entrypoint & lifespan
 │   │   ├── data/
-│   │   │   └── seed_stations.py # 200+ realistic EV fast charger records
+│   │   │   └── seed_stations.py # 200+ realistic EV fast charger records (India & Global)
 │   │   ├── models/
 │   │   │   └── station.py    # SQLAlchemy ChargingStation model
 │   │   ├── routes/
@@ -111,7 +109,7 @@ voltroute/
 │   │   │   └── route.py      # Pydantic request/response schemas
 │   │   └── services/
 │   │       ├── geocoding.py  # Fast offline cache + OSM Nominatim
-│   │       ├── routing.py    # OSRM road geometry & Haversine projection
+│   │       ├── routing.py    # Road geometry & Haversine projection
 │   │       └── optimizer.py  # EV battery simulation & charging optimizer
 │   ├── tests/
 │   │   ├── test_api.py       # Pytest automated test suite
@@ -122,21 +120,22 @@ voltroute/
 ├── frontend/                 # Next.js 14 Web Application
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── globals.css   # Cyber dark theme & Leaflet styles
-│   │   │   ├── layout.tsx    # HTML layout & SEO metadata
-│   │   │   └── page.tsx      # Responsive dashboard page
+│   │   │   ├── globals.css   # Dark / Light theme & Google Maps styles
+│   │   │   ├── layout.tsx    # HTML layout, font setup, & theme detector
+│   │   │   └── page.tsx      # Responsive dashboard page with Google Maps APIProvider
 │   │   ├── components/
-│   │   │   ├── Header.tsx    # Navbar & backend health indicator
-│   │   │   ├── RoutePlannerForm.tsx # Input parameters form
+│   │   │   ├── Header.tsx    # Navbar, theme toggle, and charging points toggle
+│   │   │   ├── PlaceAutocompleteInput.tsx # Google Places Autocomplete component
+│   │   │   ├── RoutePlannerForm.tsx # EV parameters & route planner form
 │   │   │   ├── RouteSummaryCard.tsx # Trip metrics & cost card
 │   │   │   ├── BatteryProfileChart.tsx # SVG Battery SOC chart
-│   │   │   ├── ItineraryTimeline.tsx   # Step-by-step itinerary
-│   │   │   ├── MapComponent.tsx        # Leaflet dynamic map
+│   │   │   ├── ItineraryTimeline.tsx   # Step-by-step itinerary with Maps links
+│   │   │   ├── MapComponent.tsx        # Google Maps Platform interactive map
 │   │   │   └── DemoRoutesModal.tsx     # Popular trips selector
 │   │   └── lib/
 │   │       ├── api.ts        # API client
 │   │       └── types.ts      # TypeScript interfaces
-│   ├── package.json          # Node dependencies
+│   ├── package.json          # Node dependencies (@vis.gl/react-google-maps)
 │   ├── tailwind.config.js    # Design tokens
 │   └── tsconfig.json         # TypeScript configuration
 │
@@ -151,6 +150,7 @@ voltroute/
 ### 1. Prerequisites
 - **Node.js** 18.x or 20.x+
 - **Python** 3.10 or 3.11+
+- **Google Maps Platform API Key** (optional in dev; falls back to demo key)
 
 ---
 
@@ -181,6 +181,7 @@ python -m uvicorn app.main:app --reload --port 8000
 ```bash
 cd backend
 python -m pytest tests/test_api.py -v
+python tests/verify_routes.py
 ```
 
 ---
@@ -190,6 +191,10 @@ python -m pytest tests/test_api.py -v
 ```bash
 # Open a new terminal and navigate to frontend directory
 cd frontend
+
+# Copy environment file
+cp .env.example .env.local
+# Set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in .env.local
 
 # Install dependencies
 npm install

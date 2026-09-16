@@ -33,6 +33,7 @@ class RouteRequest(BaseModel):
     max_charge_soc_pct: float = Field(80.0, ge=50.0, le=100.0, description="Target charge level at stops (80% recommended for fastest trip)")
     preferred_connectors: Optional[List[str]] = Field(default=None, description="e.g. ['NACS', 'CCS', 'Type 2']")
     min_charger_power_kw: Optional[float] = Field(default=50.0, description="Minimum power rating for candidate chargers")
+    optimization_mode: Optional[str] = Field(default="fastest", description="Optimization strategy: 'fastest', 'cheapest', or 'fewest_stops'")
 
 class StationResponse(BaseModel):
     id: int

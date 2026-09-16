@@ -7,6 +7,7 @@ export interface VehiclePreset {
   battery_capacity_kwh: number;
   efficiency_wh_per_km: number;
   max_charge_rate_kw: number;
+  max_charging_power_kw?: number;
   supported_connectors: string[];
   description?: string;
 }
@@ -16,6 +17,7 @@ export interface ResolvedLocation {
   latitude: number;
   longitude: number;
   formatted_address?: string;
+  place_id?: string;
 }
 
 export interface StationResponse {
@@ -36,6 +38,7 @@ export interface StationResponse {
   amenities: string[];
   is_operational: boolean;
   detour_km?: number;
+  place_id?: string;
 }
 
 export interface ChargingStop {
@@ -57,14 +60,18 @@ export interface RouteLeg {
   distance_km: number;
   duration_min: number;
   energy_used_kwh: number;
+  energy_consumed_kwh?: number;
   start_soc_pct: number;
+  start_battery_pct?: number;
   end_soc_pct: number;
+  end_battery_pct?: number;
   polyline?: [number, number][];
 }
 
 export interface BatteryProfilePoint {
   distance_km: number;
   soc_pct: number;
+  battery_pct?: number;
   location_name: string;
   event: "start" | "driving" | "arrival_at_charger" | "charged_at_charger" | "destination";
 }
@@ -87,8 +94,12 @@ export interface TripSummary {
 }
 
 export interface RouteRequest {
-  start_location: string | { name?: string; lat?: number; lon?: number };
-  destination: string | { name?: string; lat?: number; lon?: number };
+  start_location: string | { name?: string; lat?: number; lon?: number; place_id?: string };
+  start_lat?: number;
+  start_lng?: number;
+  destination: string | { name?: string; lat?: number; lon?: number; place_id?: string };
+  dest_lat?: number;
+  dest_lng?: number;
   current_battery_pct: number;
   battery_capacity_kwh: number;
   vehicle_efficiency_wh_per_km: number;
@@ -98,6 +109,7 @@ export interface RouteRequest {
   max_charge_soc_pct?: number;
   preferred_connectors?: string[];
   min_charger_power_kw?: number;
+  optimization_mode?: "fastest" | "cheapest" | "fewest_stops";
 }
 
 export interface RouteResponse {
@@ -110,3 +122,10 @@ export interface RouteResponse {
   route_geometry: [number, number][];
   candidate_stations: StationResponse[];
 }
+
+// Convenient Aliases
+export type RouteSummary = TripSummary;
+export type ChargingStation = StationResponse;
+export type RouteStop = ChargingStop;
+export type RouteLocation = ResolvedLocation;
+

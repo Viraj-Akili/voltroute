@@ -47,6 +47,11 @@ frontend/*.tsbuildinfo
 .env.development.local
 .env.test.local
 .env.production.local
+frontend/.env
+frontend/.env.local
+frontend/.env*.local
+backend/.env
+backend/.env.local
 
 # Operating System
 .DS_Store
