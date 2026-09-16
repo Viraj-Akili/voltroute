@@ -1,4 +1,4 @@
-# VoltRoute — EV Route Planner
+# VoltRoute - EV Route Planner
 
 VoltRoute is an EV route-planning application that combines road routing with battery-aware charging-stop optimization. Users enter their origin, destination, vehicle, and starting battery level, and VoltRoute calculates a feasible trip with recommended charging stops.
 
