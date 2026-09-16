@@ -223,18 +223,29 @@ export default function RoutePlannerForm({
               {formData.current_battery_pct}%
             </output>
           </div>
-          <input
-            id="current-battery"
-            type="range"
-            min="10"
-            max="100"
-            step="1"
-            value={formData.current_battery_pct}
-            onChange={(event) =>
-              onChange({ ...formData, current_battery_pct: Number(event.target.value) })
-            }
-            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-          />
+          {(() => {
+            const min = 10;
+            const max = 100;
+            const currentVal = Math.min(max, Math.max(min, formData.current_battery_pct ?? 70));
+            const fillPercent = ((currentVal - min) / (max - min)) * 100;
+            return (
+              <input
+                id="current-battery"
+                type="range"
+                min={min}
+                max={max}
+                step="1"
+                value={currentVal}
+                onChange={(event) =>
+                  onChange({ ...formData, current_battery_pct: Number(event.target.value) })
+                }
+                style={{
+                  background: `linear-gradient(to right, var(--accent-emerald) 0%, var(--accent-emerald) ${fillPercent}%, var(--border-color) ${fillPercent}%, var(--border-color) 100%)`,
+                }}
+                className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+              />
+            );
+          })()}
           <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-medium">
             <span>10% (Low)</span>
             <span>50%</span>
